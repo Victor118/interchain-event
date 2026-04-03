@@ -1,0 +1,47 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Project source
+      - .:/code
+      # Persist cargo registry cache between runs
+      - cargo-registry:/usr/local/cargo/registry
+      # Persist gaiad home (keys, config) between runs
+      - gaiad-home:/root/.gaia
+      # Persist neutrond home (keys, config) between runs
+      - neutrond-home:/root/.neutrond
+    working_dir: /code
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+
+  scripts:
+    image: node:22-bookworm
+    volumes:
+      - ./scripts:/app
+      - scripts-node-modules:/app/node_modules
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+
+  frontend:
+    image: node:22-bookworm
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    stdin_open: true
+    tty: true
+    command: ["sh", "-c", "npm install && npx nuxt dev --host 0.0.0.0"]
+
+volumes:
+  cargo-registry:
+  gaiad-home:
+  neutrond-home:
+  scripts-node-modules:
+  frontend-node-modules:

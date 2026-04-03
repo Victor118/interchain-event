@@ -1,0 +1,11 @@
+[package]
+name = "cross-chain-shared"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cosmwasm-std = { workspace = true }
+cosmwasm-schema = { workspace = true }
+serde = { workspace = true }
+schemars = { workspace = true }
+prost = { workspace = true }
