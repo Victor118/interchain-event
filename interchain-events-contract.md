@@ -167,7 +167,21 @@ In all use cases below, Interchain Events only verifies the proof and calls back
 
 **Value:** For regulated assets that cannot leave their issuance chain, Interchain Events enables settlement without wrapping or bridging — two sovereign registries, coordinated without either compromising their regulatory status.
 
-### 6. Automated Treasury Management
+### 6. Multi-Hop Compliance via Proof Routing
+
+**Actors:** Identity chain (no direct IBC to Ondo), Cosmos Hub (intermediary), Ondo (tokenized securities)
+
+**Step 1 subscription (Hub):** "Watch `kyc/<investor>` on identity chain, call my relay contract when proof is submitted"
+
+**Step 1 subscriber reacts:** The relay contract on the Hub verifies the KYC proof and writes `kyc_verified/<investor> → approved` into its own state.
+
+**Step 2 subscription (Ondo):** "Watch `kyc_verified/<investor>` on the Hub, call my compliance contract when proof is submitted"
+
+**Step 2 subscriber reacts:** The compliance contract on Ondo reads the verified status and whitelists the investor.
+
+**Value:** Ondo verifies KYC from an identity chain it has never integrated with. The Hub serves as a trust relay — each hop is cryptographically verified. Adding a new identity provider requires zero changes on Ondo.
+
+### 7. Automated Treasury Management
 
 **Actors:** Noble (USDC), Ondo (OUSG yield-bearing)
 
@@ -213,6 +227,44 @@ For chains that actively participate, a lightweight proxy contract on the source
 **Best for:** Chains deployed by Cosmos Labs via Network Manager, chains that choose deeper integration for richer coordination capabilities.
 
 Both mechanisms feed into the same Interchain Events interface. The enterprise client defines subscriptions in business terms, and the Hub resolves the verification path automatically.
+
+### Multi-Hop Proof Routing (Transitive State Verification)
+
+Not every chain pair has a direct IBC light client connection. Chain A may need to verify state on Chain C, but only has a light client for Chain B — which itself has a light client for Chain C. Interchain Events enables **transitive verification** through subscription chaining:
+
+1. **Chain B** runs an Interchain Events contract that subscribes to Chain C's state. When a proof is submitted and verified, the callback contract on Chain B writes the verified result into its own on-chain state (e.g., `verified_events/chain_c/attestation_42 → true`).
+
+2. **Chain A** runs an Interchain Events contract that subscribes to Chain B's state — specifically, the verification result written by step 1. When that state is proven, Chain A knows that Chain C's original event occurred, without ever having a direct light client connection to Chain C.
+
+The trust model is explicit and composable: Chain A trusts Chain B's validators (via its A→B light client), and Chain B trusts Chain C's validators (via its B→C light client). This is the same transitive trust that underpins multi-hop routing in traditional networks, but with cryptographic verification at each hop.
+
+This pattern has several powerful properties:
+
+- **Reach beyond direct connections** — Any chain can verify state on any other chain reachable through a path of light clients, without requiring the entire ecosystem to maintain N×N connections.
+- **Composable verification pipelines** — The callback on Chain B could itself be an Interchain Events contract that automatically creates subscriptions to other chains, forming multi-step verification workflows that span three or more chains.
+- **Hub as routing backbone** — The Cosmos Hub, with its extensive light client connections, naturally serves as an intermediary for chains that lack direct connections to each other.
+- **No protocol changes required** — Multi-hop routing emerges naturally from the existing subscription + callback mechanism. No new message types, no new verification logic — just subscriptions observing other subscriptions' results.
+
+**Example: Three-chain compliance flow**
+
+An identity chain (Chain C) issues KYC approvals. A tokenized securities chain (Chain A) needs to verify KYC status but has no direct light client for the identity chain. The Hub (Chain B) bridges the gap:
+
+1. Hub subscribes to `kyc/<investor>` on Chain C → callback writes `kyc_verified/<investor> → approved` on Hub
+2. Securities chain subscribes to `kyc_verified/<investor>` on Hub → callback whitelists the investor
+
+The securities chain never integrates with the identity chain. The Hub absorbs the verification complexity and serves as the trust relay.
+
+### Embedded Light Client (Protocol Autonomy)
+
+In production, Interchain Events can embed a Tendermint light client directly in the smart contract, rather than depending on the host chain's IBC module to query ConsensusState. The contract maintains its own store of verified consensus states (app_hash + validator set), updated by watchers who submit signed block headers.
+
+This design makes the protocol **fully autonomous**:
+
+- **Deployable on any CosmWasm chain** — no dependency on chain-specific features like gRPC query whitelists or IBC module access from smart contracts.
+- **Watchers are the relayers** — the same actors who submit proofs also maintain the light client, but only for the specific heights they need (not every block). They are incentivized by subscription bounties.
+- **Same security guarantees** — the contract verifies validator signatures and 2/3+ voting power before accepting a header, identical to the IBC light client security model.
+
+This is the same approach used by protocols like Polymer and Union for cross-chain verification at the contract level.
 
 ### Interchain State Explorer
 
@@ -300,6 +352,14 @@ Interchain Events is not a replacement for Intento's full automation capabilitie
 - Integration with IBC light clients for VerifyMembership
 - Integration with ICA for action execution
 - Basic subscription templates (state equality, threshold comparison)
+
+### Phase 1b: Embedded Light Client (4-6 weeks)
+
+- Tendermint light client in CosmWasm: header verification, validator set tracking, consensus state storage
+- Watcher-submitted headers with validator signature verification (ed25519, 2/3+ voting power)
+- Skip verification for non-consecutive headers (within trusting period)
+- Removes dependency on host chain's IBC module for ConsensusState queries
+- Makes the protocol deployable on any CosmWasm chain without special permissions
 
 ### Phase 2: Proxy Contracts and IBC Notifications (6-8 weeks)
 
