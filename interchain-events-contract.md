@@ -181,7 +181,24 @@ In all use cases below, Interchain Events only verifies the proof and calls back
 
 **Value:** Ondo verifies KYC from an identity chain it has never integrated with. The Hub serves as a trust relay — each hop is cryptographically verified. Adding a new identity provider requires zero changes on Ondo.
 
-### 7. Automated Treasury Management
+### 7. Private Chain to Public DeFi Bridge
+
+**Actors:** Private enterprise chain (e.g. Progmat, PoA), public DeFi protocol (e.g. lending, DEX)
+
+**Context:** Enterprise chains are permissioned and private by design. They cannot — and should not — expose their infrastructure to public protocols. But their users and assets need to interact with public DeFi: accessing liquidity, earning yield, settling trades.
+
+**Subscription:** A DeFi lending protocol on a public chain subscribes to `credit_scores/<borrower>` on a private credit assessment chain. When the score exceeds the required threshold, the lending contract authorizes collateralized borrowing.
+
+**Subscriber reacts:** The lending contract receives the cryptographically verified credit score and opens a borrowing position. No API call to the private chain, no oracle reporting the score, no trust in any intermediary.
+
+**Other examples:**
+- Settlement finalized on private Progmat chain → escrow releases USDC on a public DEX
+- Audit certification on private compliance chain → token becomes eligible for listing on a public marketplace
+- Bond maturity reached on private issuance chain → triggers redemption flow on public payment chain
+
+**Value:** The private chain exposes nothing beyond what is already in its Merkle state. It doesn't need to run public endpoints, deploy proxy contracts, or trust any bridge. The public DeFi protocol verifies unilaterally via Merkle proof. This is the bridge institutions need: participate in public DeFi without opening their private infrastructure and without trusting oracles.
+
+### 8. Automated Treasury Management
 
 **Actors:** Noble (USDC), Ondo (OUSG yield-bearing)
 
