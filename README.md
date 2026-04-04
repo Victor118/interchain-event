@@ -182,4 +182,3 @@ The contract maintains its own light client, updated by watchers who submit sign
 - [Whitepaper](interchain-events-contract.md) — Full product description, use cases, revenue model
 - [Technical spec](interchain-events-contract-spec.md) — ConsensusState queries, proof structure, ICS-23 verification
 - [Test scenario](TEST_SCENARIO.md) — Step-by-step deployment and testing guide
-- [Tokenomics](TOKENOMICS_ANNEX.md) — Token economics design
