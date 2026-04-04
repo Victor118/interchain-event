@@ -210,23 +210,13 @@ The Interchain Events is the application layer that ties all of these infrastruc
 
 ---
 
-## Verification Mechanisms
+## Verification Mechanism
 
-The Interchain Events supports multiple verification mechanisms depending on the chain's level of integration:
+Interchain Events uses a single verification mechanism: **ICS-23 Merkle proof verification** against IBC light clients.
 
-### VerifyMembership (passive state verification)
+A watcher (or the interested party) submits a Merkle proof of a remote chain's state. The contract verifies the proof cryptographically against the light client's stored consensus state. No cooperation from the remote chain is needed — the proof is generated from publicly available state, and the verification is purely mathematical.
 
-The Hub reads the state of a remote chain via its IBC light client, without any cooperation from the remote chain. A user or watcher submits a Merkle proof, the Hub verifies it cryptographically against the light client's stored consensus state. This is fully trustless and requires nothing from the remote chain.
-
-**Best for:** Verifying irrevocable states like settlement finality, KYC status, governance results, asset ownership.
-
-### Direct IBC Notification (cooperative chains)
-
-For chains that actively participate, a lightweight proxy contract on the source chain executes the local action and sends an IBC notification to the Hub. This is the richest and fastest mechanism — the notification contains full details of what happened (who, what, how much).
-
-**Best for:** Chains deployed by Cosmos Labs via Network Manager, chains that choose deeper integration for richer coordination capabilities.
-
-Both mechanisms feed into the same Interchain Events interface. The enterprise client defines subscriptions in business terms, and the Hub resolves the verification path automatically.
+This is the core design principle: **observe any chain unilaterally, without deploying anything on it**.
 
 ### Multi-Hop Proof Routing (Transitive State Verification)
 
