@@ -350,21 +350,14 @@ Interchain Events is not a replacement for Intento's full automation capabilitie
 - Removes dependency on host chain's IBC module for ConsensusState queries
 - Makes the protocol deployable on any CosmWasm chain without special permissions
 
-### Phase 2: Proxy Contracts and IBC Notifications (6-8 weeks)
-
-- CosmWasm proxy contract for cooperative Cosmos chains
-- Solidity proxy contract for Cosmos EVM chains (via ICS-20 memo pattern or IBC v2)
-- Rich notification format with full transaction attribution
-- Dashboard for subscription monitoring
-
-### Phase 3: Interchain State Explorer (6-8 weeks)
+### Phase 2: Interchain State Explorer (6-8 weeks)
 
 - Web-based explorer that connects to any IBC-connected chain's RPC and displays its state as a navigable tree: modules, keys, values
 - Browse native modules (bank, staking, governance) and CosmWasm contract state with decoded key-value pairs
 - Click-to-subscribe: select any state path in the explorer and create an Interchain Events subscription directly — the path, chain, and data format are pre-filled automatically
 - Proof preview: generate and inspect VerifyMembership proofs for any key before committing to a subscription
 
-### Phase 4: Enterprise Features (ongoing)
+### Phase 3: Enterprise Features (ongoing)
 
 - Subscription templates marketplace (DVP, compliance, treasury management)
 - Premium enterprise access (guaranteed SLAs, priority execution)
