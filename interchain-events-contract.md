@@ -81,13 +81,13 @@ Each enterprise chain connects to the Hub once via IBC. From that moment, it can
 
 Progmat connects to the Hub → it can coordinate with Ondo, Noble, CBDC chains, and any future enterprise chain, all through the same Interchain Events. Adding a new counterparty is a configuration change, not a development project.
 
-### Two subscription modes
+### Subscription lifecycle
 
-**One-shot subscription** — An event subscription is triggered once and consumed. Suitable for individual operations: a specific DVP, a single escrow release, a one-time compliance check. Once the event is detected and the action executed, the subscription is closed.
+A subscription is triggered once and consumed. Once the event is detected and the action executed, the subscription is closed. This keeps the protocol simple and predictable.
 
-**Streaming subscription** — A persistent subscription monitors a continuously growing list on a remote chain. Each new item triggers an action automatically. Interchain Events tracks the last processed index and fires on every new entry. Suitable for ongoing business flows: every new settlement on Progmat triggers a payment on Noble, every new KYC approval on an identity chain triggers a whitelist update on Ondo.
+For ongoing workflows (e.g., processing every new settlement as it arrives), the **subscriber contract** decides whether to re-subscribe in its callback. For example, a payment contract that processes settlements at index N can create a new subscription for index N+1 in the same callback. This turns a simple one-shot primitive into a continuous processing pipeline — but the looping logic lives in the business contract, not in the protocol.
 
-Streaming subscriptions transform Interchain Events from a one-time coordination tool into a **continuous cross-chain automation layer** — the equivalent of a database trigger, but between sovereign blockchains.
+This design is intentional: the protocol provides a single, auditable verification primitive. The subscriber decides if, when, and how to continue. Different business contracts can implement different strategies — retry on failure, stop after N events, switch conditions dynamically — without any protocol changes.
 
 ### Who triggers the events?
 
@@ -97,7 +97,7 @@ Event detection requires someone to submit a cryptographic proof to the Hub. Thr
 
 **Counterparty-driven** — The other party in the transaction submits the proof to advance the workflow. In a DVP, the buyer submits the proof of payment to trigger the asset transfer.
 
-**Watcher network** — For streaming subscriptions or cases where no party is immediately available, independent watchers monitor chains and submit proofs in exchange for a fee. The subscription creator deposits a bounty that watchers earn for each proof submitted. If the beneficiary submits faster than the watchers, they save the bounty. Watchers serve as a reliability backstop, not the primary mechanism.
+**Watcher network** — For cases where no party is immediately available, independent watchers monitor chains and submit proofs in exchange for a fee. The subscription creator deposits a bounty that watchers earn for each proof submitted. If the beneficiary submits faster than the watchers, they save the bounty. Watchers serve as a reliability backstop, not the primary mechanism.
 
 This design ensures liveness without creating dependency on any single actor. The system works even if watchers disappear — the interested parties can always submit proofs themselves.
 
@@ -145,15 +145,15 @@ In all use cases below, Interchain Events only verifies the proof and calls back
 
 **Value:** Atomic conditional settlement between sovereign monetary systems. Neither central bank integrates the other's infrastructure directly. CBDC tokens are sovereign instruments that will not be wrapped or bridged — cross-chain state verification is the only viable coordination mechanism.
 
-### 4. Continuous Settlement Flow (streaming)
+### 4. Continuous Settlement Flow
 
 **Actors:** Progmat (tokenized bonds), Noble (USDC payments)
 
 **Subscription:** "Watch `settlements/42` on Progmat, call my payment contract when proof is submitted"
 
-**Subscriber reacts:** The payment contract executes the corresponding payment on Noble, then creates a new subscription for `settlements/43`. The chain continues indefinitely.
+**Subscriber reacts:** The payment contract executes the corresponding payment on Noble, then creates a new subscription for `settlements/43` in the same callback. The chain continues as long as the business contract re-subscribes.
 
-**Value:** Not a one-time setup per transaction — a permanent, automated pipeline between two institutions. Dozens of settlements per day, each verified and executed automatically. The operational equivalent of a standing SWIFT instruction, but trustlessly verified and cross-chain.
+**Value:** An automated pipeline between two institutions built entirely from one-shot subscriptions. Dozens of settlements per day, each verified and executed automatically. The operational equivalent of a standing SWIFT instruction, but trustlessly verified and cross-chain. The looping logic is in the subscriber contract, not in the protocol — the institution controls when to continue or stop.
 
 ### 5. Delivery vs. Payment (DVP) for Regulated Assets
 
@@ -287,11 +287,10 @@ Every interaction with Interchain Events generates economic activity on the Hub:
 - **Subscription registration** — Gas fees in ATOM for creating event subscriptions
 - **Proof verification** — Gas fees in ATOM for each event detection (VerifyMembership, IBC packet processing)
 - **Action execution** — Gas fees in ATOM for subscriber contract callbacks and their resulting actions (ICA, escrow release, token transfers, etc.)
-- **Streaming subscriptions** — Continuous revenue: each new item in a monitored list generates gas fees for verification and execution. A single subscription between two institutions can generate dozens of transactions per day, indefinitely.
-- **Watcher bounties** — Optional deposits in ATOM to incentivize third-party watchers for streaming subscriptions. If the beneficiary submits proofs themselves, bounties are not consumed.
-- **Service access** — Optional ATOM streaming via the Revenue Module for premium enterprise access (guaranteed SLAs, priority execution)
+- **Re-subscription chains** — Subscriber contracts that re-subscribe in their callback create continuous workflows. Each step generates gas fees for verification and execution. A single workflow between two institutions can generate dozens of transactions per day.
+- **Watcher bounties** — Optional deposits in ATOM to incentivize third-party watchers. If the beneficiary submits proofs themselves, bounties are not consumed.
 
-This is non-inflationary, usage-based revenue. Critically, streaming subscriptions create **recurring** ATOM demand — not one-time fees but ongoing gas consumption proportional to the volume of cross-chain business activity. The more enterprise chains Cosmos Labs onboards, the more subscriptions are created, the more ATOM is consumed.
+This is non-inflationary, usage-based revenue. Subscriber contracts that re-subscribe create **recurring** ATOM demand — not one-time fees but ongoing gas consumption proportional to the volume of cross-chain business activity. The more enterprise chains Cosmos Labs onboards, the more subscriptions are created, the more ATOM is consumed.
 
 ### For Cosmos Labs
 
@@ -378,7 +377,7 @@ Interchain Events is not a replacement for Intento's full automation capabilitie
 ### Phase 4: Enterprise Features (ongoing)
 
 - Subscription templates marketplace (DVP, compliance, treasury management)
-- Revenue Module integration for streaming access control
+- Premium enterprise access (guaranteed SLAs, priority execution)
 - SLA-backed watcher network
 - Enterprise dashboard and API
 
@@ -434,7 +433,7 @@ The submitter acts as its own relayer — no dependency on external relayers for
 | Subscription type | Proof mode | Example |
 |---|---|---|
 | Absolute state | Single proof | KYC = approved, settlement = finalized |
-| Incremental index (streaming) | Single proof | New item at index N+1 |
+| Incremental index (re-subscribe in callback) | Single proof | New item at index N+1 |
 | Threshold crossing | Dual proof (H-1 and H) | Balance crosses 5M USDC |
 | State transition | Dual proof (H-1 and H) | Status changes from pending to active |
 
