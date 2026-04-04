@@ -166,7 +166,7 @@ The POC uses an off-chain AppHash because the Hub doesn't expose IBC light clien
 
 **Option A — Whitelist VerifyMembership (recommended)**
 
-Add 2 lines to Gaia's wasmd configuration to allow CosmWasm contracts to call `VerifyMembership` on IBC light clients. This is a read-only query with zero security risk. Requires a Gaia software upgrade governance proposal.
+Add 2 lines to Gaia's wasmd configuration to allow CosmWasm contracts to call `VerifyMembership` on IBC light clients. This is a read-only query with zero security risk. Requires a Gaia software upgrade governance proposal. See [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023).
 
 ```go
 "/ibc.core.client.v1.Query/VerifyMembership":    &ibcclienttypes.QueryVerifyMembershipResponse{},

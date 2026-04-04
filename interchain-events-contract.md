@@ -235,6 +235,8 @@ A watcher (or the interested party) submits a Merkle proof of a remote chain's s
 
 This is the core design principle: **observe any chain unilaterally, without deploying anything on it**.
 
+> **Note:** The Hub currently does not expose IBC light client queries to CosmWasm contracts. We have proposed enabling `VerifyMembership` and `VerifyNonMembership` as whitelisted gRPC queries — a 2-line configuration change with no security risk. See [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023).
+
 ### Multi-Hop Proof Routing (Transitive State Verification)
 
 Not every chain pair has a direct IBC light client connection. Chain A may need to verify state on Chain C, but only has a light client for Chain B — which itself has a light client for Chain C. Interchain Events enables **transitive verification** through subscription chaining:
