@@ -55,9 +55,12 @@
             :placeholder="node.searchPlaceholder ?? 'Search a key...'"
             @keyup.enter="onSearch"
           />
-          <button class="search-go" @click="onSearch" :disabled="!searchInput || searching">
+          <button class="search-go" @click="onSearch" :disabled="!searchInput || searching" title="Search">
             <span v-if="searching" class="spinner" />
             <span v-else>&#x1F50D;</span>
+          </button>
+          <button class="search-go watch-go" @click="openSubscribeForSearch" :disabled="!searchInput" title="Watch this key">
+            &#x1F441;
           </button>
         </div>
         <!-- Search result -->
@@ -69,21 +72,28 @@
             </div>
             <!-- Inline children from search (e.g. balances, contract state) -->
             <div v-if="searchResult.children && searchResult.children.length > 0" class="search-children">
-              <div
-                v-for="child in displayedSearchChildren"
-                :key="child.key"
-                class="search-child-row"
-              >
-                <span class="search-child-key">{{ child.key }}</span>
-                <button
-                  class="watch-btn watch-btn--inline"
-                  title="Create subscription"
-                  @click="openSubscribeForChild(child)"
-                >
-                  &#x1F441;
-                </button>
-                <span class="search-child-value">{{ truncate(child.value ?? '', 50) }}</span>
-              </div>
+              <template v-for="child in displayedSearchChildren" :key="child.key">
+                <!-- Folder children (e.g. wasm namespace folders) → render as TreeNode -->
+                <TreeNode
+                  v-if="child.hasChildren"
+                  :node="child"
+                  :depth="depth + 2"
+                  :rest="rest"
+                  @load-more="onLoadMore"
+                />
+                <!-- Leaf children → render as flat row -->
+                <div v-else class="search-child-row">
+                  <span class="search-child-key">{{ child.key }}</span>
+                  <button
+                    class="watch-btn watch-btn--inline"
+                    title="Create subscription"
+                    @click="openSubscribeForChild(child)"
+                  >
+                    &#x1F441;
+                  </button>
+                  <span class="search-child-value">{{ truncate(child.value ?? '', 50) }}</span>
+                </div>
+              </template>
               <button
                 v-if="searchResult.children.length > displayedSearchCount"
                 class="load-more-btn"
@@ -96,7 +106,7 @@
             <div v-else class="search-found-actions">
               <span class="search-hint">Condition:</span>
               <button
-                v-for="c in ['Equals', 'GreaterThan', 'LessThan']"
+                v-for="c in ['Equals', 'JsonPathEquals', 'GreaterThan', 'LessThan']"
                 :key="c"
                 class="condition-mini-btn"
                 @click="openSubscribeWithCondition(c, searchResult.value)"
@@ -104,8 +114,7 @@
             </div>
           </div>
           <div v-else class="search-not-found">
-            <span>Not found.</span>
-            <button class="condition-mini-btn" @click="openSubscribeExists">Watch with Exists</button>
+            <span>Not found — use &#x1F441; to watch this key.</span>
           </div>
         </div>
       </div>
@@ -123,9 +132,12 @@
             placeholder="Search or watch a key..."
             @keyup.enter="onSearch"
           />
-          <button class="search-go" @click="onSearch" :disabled="!searchInput || searching">
+          <button class="search-go" @click="onSearch" :disabled="!searchInput || searching" title="Search">
             <span v-if="searching" class="spinner" />
-            <span v-else>&#x1F441;</span>
+            <span v-else>&#x1F50D;</span>
+          </button>
+          <button class="search-go watch-go" @click="openSubscribeForSearch" :disabled="!searchInput" title="Watch this key">
+            &#x1F441;
           </button>
         </div>
         <div v-if="searchResult !== null" class="search-result">
@@ -135,7 +147,7 @@
             <div class="search-found-actions">
               <span class="search-hint">Condition:</span>
               <button
-                v-for="c in ['Equals', 'GreaterThan', 'LessThan']"
+                v-for="c in ['Equals', 'JsonPathEquals', 'GreaterThan', 'LessThan']"
                 :key="c"
                 class="condition-mini-btn"
                 @click="openSubscribeWithCondition(c, searchResult.value)"
@@ -143,8 +155,7 @@
             </div>
           </div>
           <div v-else class="search-not-found">
-            <span>Key not found.</span>
-            <button class="condition-mini-btn" @click="openSubscribeExists">Watch with Exists</button>
+            <span>Not found — use &#x1F441; to watch this key.</span>
           </div>
         </div>
       </div>
@@ -253,6 +264,62 @@ async function onSearch() {
   }
 }
 
+// Watch button next to search input — opens modal for the typed key
+function openSubscribeForSearch() {
+  if (!searchInput.value) return
+
+  const contractAddr = (props.node as any)._contractAddr as string | undefined
+  const ns = (props.node as any)._namespace as string | undefined
+
+  if (contractAddr && ns) {
+    // Wasm namespace folder — build IAVL key for namespace::searchInput
+    const toHex = (s: string) => Array.from(new TextEncoder().encode(s)).map(b => b.toString(16).padStart(2, '0')).join('')
+    const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+    const bech32ToHex = (addr: string) => {
+      const sepIdx = addr.lastIndexOf('1')
+      const data = addr.slice(sepIdx + 1, -6)
+      const values: number[] = []
+      for (const c of data) values.push(CHARSET.indexOf(c))
+      let acc = 0, bits = 0
+      const bytes: number[] = []
+      for (const v of values) {
+        acc = (acc << 5) | v
+        bits += 5
+        while (bits >= 8) { bits -= 8; bytes.push((acc >> bits) & 0xff) }
+      }
+      return bytes.map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+    const nsHex = toHex(ns)
+    const nsLen = (nsHex.length / 2).toString(16).padStart(4, '0')
+    const mapKeyHex = toHex(searchInput.value)
+    const addrHex = bech32ToHex(contractAddr)
+    const fullStoreKey = '03' + addrHex + nsLen + nsHex + mapKeyHex
+
+    const syntheticNode: StateNode = {
+      key: searchInput.value,
+      value: null,
+      module: 'wasm',
+      path: [...props.node.path, searchInput.value],
+      hasChildren: false,
+      children: [],
+      expanded: false,
+      loading: false,
+      nextPageKey: null,
+      storeName: 'wasm',
+      storeKey: fullStoreKey,
+    }
+    modalNode.value = syntheticNode
+    modalCondition.value = 'Exists'
+    modalValue.value = null
+    modalSearchKey.value = null
+    showModal.value = true
+    return
+  }
+
+  // Fallback for non-wasm nodes
+  openSubscribeExists()
+}
+
 // Leaf subscribe
 function openSubscribe() {
   modalNode.value = null
@@ -282,12 +349,40 @@ function openSubscribeWithCondition(condition: string, value: string | null) {
 
 // Subscribe with Exists (key not found)
 function openSubscribeExists() {
+  // Check if the parent node has pending watch metadata (from wasm namespace search)
+  const pendingStoreKey = (props.node as any)._pendingStoreKey as string | undefined
+  const pendingWatchKey = (props.node as any)._pendingWatchKey as string | undefined
+
+  if (pendingStoreKey) {
+    // Build a synthetic node with the correct IAVL key
+    const syntheticNode: StateNode = {
+      key: pendingWatchKey ?? searchInput.value,
+      value: null,
+      module: 'wasm',
+      path: [...props.node.path, pendingWatchKey ?? searchInput.value],
+      hasChildren: false,
+      children: [],
+      expanded: false,
+      loading: false,
+      nextPageKey: null,
+      storeName: 'wasm',
+      storeKey: pendingStoreKey,
+    }
+    modalNode.value = syntheticNode
+    modalCondition.value = 'Exists'
+    modalValue.value = null
+    modalSearchKey.value = null
+    showModal.value = true
+    return
+  }
+
   modalNode.value = null
   modalCondition.value = 'Exists'
   modalValue.value = null
   modalSearchKey.value = searchInput.value
   showModal.value = true
 }
+
 
 function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max) + '...' : str
@@ -444,6 +539,10 @@ function formatValue(raw: string): string {
 .search-go:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.watch-go {
+  font-size: 14px;
 }
 
 .search-result {

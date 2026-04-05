@@ -48,6 +48,32 @@ function toHex(str: string): string {
   return Array.from(new TextEncoder().encode(str)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+/** Decode a bech32 address to raw bytes hex (32 bytes for cosmos/neutron addresses) */
+function bech32AddrToHex(addr: string): string {
+  // bech32 alphabet
+  const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+  const sepIdx = addr.lastIndexOf('1')
+  const data = addr.slice(sepIdx + 1, -6) // strip prefix and checksum
+  const values: number[] = []
+  for (const c of data) {
+    const v = CHARSET.indexOf(c)
+    if (v < 0) throw new Error('Invalid bech32 character')
+    values.push(v)
+  }
+  // Convert 5-bit groups to 8-bit bytes
+  let acc = 0, bits = 0
+  const bytes: number[] = []
+  for (const v of values) {
+    acc = (acc << 5) | v
+    bits += 5
+    while (bits >= 8) {
+      bits -= 8
+      bytes.push((acc >> bits) & 0xff)
+    }
+  }
+  return bytes.map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 /** Decode hex string to Uint8Array */
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -117,12 +143,10 @@ function decodeWasmStateKey(hex: string): string {
  * We store the hex representation for display / subscription creation.
  */
 function wasmStoreKey(contractAddr: string, storageKeyHex: string): string {
-  // \x03 prefix + contract address as UTF-8 + raw storage key
+  // \x03 prefix + contract address raw bytes (32) + raw storage key
   const prefix = '03'
-  const addrHex = toHex(contractAddr)
-  // cw-storage-plus uses 2-byte big-endian length prefix for the namespace
-  const addrLen = (addrHex.length / 2).toString(16).padStart(4, '0')
-  return prefix + addrLen + addrHex + storageKeyHex
+  const addrHex = bech32AddrToHex(contractAddr)
+  return prefix + addrHex + storageKeyHex
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +316,70 @@ async function fetchWasm(rest: string, node: StateNode, pageKey?: string): Promi
   return paginated([], null)
 }
 
+/**
+ * Parse a cw-storage-plus hex key into { namespace, mapKey } if possible.
+ * Returns null if the key doesn't look like a Map entry.
+ */
+function parseWasmKeyParts(hex: string): { namespace: string; mapKey: string } | null {
+  try {
+    const bytes = hexToBytes(hex)
+    if (bytes.length < 2) return null
+
+    const nsLen = (bytes[0] << 8) | bytes[1]
+    if (nsLen <= 0 || nsLen >= bytes.length - 2) return null
+
+    const decoder = new TextDecoder('utf-8', { fatal: true })
+    const nsBytes = bytes.slice(2, 2 + nsLen)
+    const ns = decoder.decode(nsBytes)
+    if (!/^[\x20-\x7e]+$/.test(ns)) return null
+
+    const keyBytes = bytes.slice(2 + nsLen)
+    if (keyBytes.length === 0) return { namespace: ns, mapKey: '' }
+
+    try {
+      const mapKey = decoder.decode(keyBytes)
+      if (/^[\x20-\x7e]+$/.test(mapKey)) return { namespace: ns, mapKey }
+    } catch { /* fall through */ }
+
+    // Map key is binary
+    return { namespace: ns, mapKey: '0x' + Array.from(keyBytes).map(b => b.toString(16).padStart(2, '0')).join('') }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build the full IAVL store key for a namespace::mapKey in a wasm contract.
+ * \x03 + contract_addr_hex + 2-byte-BE-nslen + namespace + mapKey
+ */
+function wasmStoreKeyForNsEntry(contractAddr: string, namespace: string, mapKey: string): string {
+  const prefix = '03'
+  const addrHex = bech32AddrToHex(contractAddr)
+  const nsHex = toHex(namespace)
+  const nsLen = (nsHex.length / 2).toString(16).padStart(4, '0')
+  const mapKeyHex = toHex(mapKey)
+  return prefix + addrHex + nsLen + nsHex + mapKeyHex
+}
+
 async function searchWasm(rest: string, node: StateNode, key: string): Promise<{ found: boolean; value: string | null; children?: StateNode[] }> {
+  // Search within a namespace folder (e.g. "attestations/")
+  // Check if the typed key matches an existing child, otherwise return not found
+  // (TreeNode will then offer "Watch with Exists")
+  if ((node as any)._namespace && (node as any)._contractAddr) {
+    const contractAddr = (node as any)._contractAddr as string
+    const ns = (node as any)._namespace as string
+    const existing = node.children.find(c => c.key === key)
+    if (existing) {
+      return { found: true, value: existing.value }
+    }
+    // Key doesn't exist — return not found so TreeNode offers "Watch with Exists"
+    // But we need to set up the storeKey so the subscription modal has the right IAVL key
+    // We do this by attaching metadata to the node for openSubscribeExists in TreeNode
+    ;(node as any)._pendingWatchKey = key
+    ;(node as any)._pendingStoreKey = wasmStoreKeyForNsEntry(contractAddr, ns, key)
+    return { found: false, value: null }
+  }
+
   if (node.path.includes('contracts')) {
     try {
       // First get contract info
@@ -300,20 +387,67 @@ async function searchWasm(rest: string, node: StateNode, key: string): Promise<{
       const contract = info.contract_info ?? {}
 
       // Then get contract state
-      const stateRes = await $fetch<any>(`${rest}/cosmwasm/wasm/v1/contract/${key}/state`, { query: { 'pagination.limit': PAGE_SIZE } })
+      const stateRes = await $fetch<any>(`${rest}/cosmwasm/wasm/v1/contract/${key}/state`, { query: { 'pagination.limit': 100 } })
       const models = stateRes.models ?? []
 
-      const children = models.map((m: any) => {
-        // m.key from REST is hex-encoded, m.value is base64-encoded
+      // Group state entries by namespace to build a tree
+      const namespaces = new Map<string, { entries: Array<{ mapKey: string; value: string; rawKeyHex: string }>; }>()
+      const topLevel: StateNode[] = []
+
+      for (const m of models) {
         const rawKeyHex = m.key
-        const decodedKey = decodeWasmStateKey(rawKeyHex)
         let decodedValue = m.value
         try { decodedValue = atob(m.value) } catch { /* keep raw */ }
-        return makeLeaf('wasm', [...node.path, key], decodedKey, decodedValue, {
+
+        const parts = parseWasmKeyParts(rawKeyHex)
+        if (parts && parts.mapKey) {
+          // This is a Map entry — group by namespace
+          if (!namespaces.has(parts.namespace)) {
+            namespaces.set(parts.namespace, { entries: [] })
+          }
+          namespaces.get(parts.namespace)!.entries.push({
+            mapKey: parts.mapKey,
+            value: decodedValue,
+            rawKeyHex,
+          })
+        } else {
+          // Item or unparseable — show as top-level leaf
+          const decodedKey = decodeWasmStateKey(rawKeyHex)
+          topLevel.push(makeLeaf('wasm', [...node.path, key], decodedKey, decodedValue, {
+            storeName: 'wasm',
+            storeKey: wasmStoreKey(key, rawKeyHex),
+          }))
+        }
+      }
+
+      // Build namespace folder nodes with their children
+      const children: StateNode[] = []
+
+      for (const [ns, data] of namespaces) {
+        const nsFolder = makeFolder('wasm', [...node.path, key], ns + '/', {
+          searchable: true,
+          searchPlaceholder: `Watch a new ${ns} key...`,
           storeName: 'wasm',
-          storeKey: wasmStoreKey(key, rawKeyHex),
         })
-      })
+
+        // Pre-populate the folder's children with existing entries
+        nsFolder.children = data.entries.map(e =>
+          makeLeaf('wasm', [...node.path, key, ns + '/'], e.mapKey, e.value, {
+            storeName: 'wasm',
+            storeKey: wasmStoreKeyForNsEntry(key, ns, e.mapKey),
+          })
+        )
+        nsFolder.expanded = false
+
+        // Attach metadata for custom key subscription
+        ;(nsFolder as any)._contractAddr = key
+        ;(nsFolder as any)._namespace = ns
+
+        children.push(nsFolder)
+      }
+
+      // Add top-level items after namespace folders
+      children.push(...topLevel)
 
       const label = contract.label ? `${contract.label} (code ${contract.code_id})` : `code ${contract.code_id}`
       return { found: true, value: label, children }
