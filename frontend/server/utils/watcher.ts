@@ -24,6 +24,7 @@ export interface Subscription {
   creator: string;
   client_id: string;
   key_path: string[];
+  watch_key: string; // base64-encoded IAVL key
   condition: any;
   callback_contract: string;
   callback_msg: string;
@@ -233,8 +234,18 @@ function addEvent(event: Omit<WatcherEvent, "timestamp">) {
 }
 
 async function processSubscription(sub: Subscription, mnemonic: string) {
-  // For now we only handle Neutron observations (wasm store)
-  if (!sub.key_path.includes("wasm")) return;
+  if (!sub.watch_key) {
+    addEvent({
+      subscription_id: sub.id,
+      type: "check",
+      message: `Subscription ${sub.id}: no watch_key, skipping`,
+    });
+    return;
+  }
+
+  // Decode base64 watch_key to hex for abci_query
+  const watchKeyBytes = Uint8Array.from(atob(sub.watch_key), (c) => c.charCodeAt(0));
+  const watchKeyHex = bytesToHex(watchKeyBytes);
 
   addEvent({
     subscription_id: sub.id,
@@ -242,16 +253,84 @@ async function processSubscription(sub: Subscription, mnemonic: string) {
     message: `Checking subscription ${sub.id} (condition: ${JSON.stringify(sub.condition)})`,
   });
 
-  // We need the IAVL key — for the POC we reconstruct it from subscription metadata
-  // In production the subscription would store the full key or the watcher would know the mapping
-  // For now, skip subscriptions we can't decode
-  // TODO: store IAVL key hex in subscription metadata
+  try {
+    // Fetch current state from remote chain
+    const proof = await fetchStateWithProof(watchKeyHex);
 
-  addEvent({
-    subscription_id: sub.id,
-    type: "check",
-    message: `Subscription ${sub.id}: skipping (IAVL key not available in subscription metadata — use the test-flow script for end-to-end testing)`,
-  });
+    if (!proof) {
+      addEvent({
+        subscription_id: sub.id,
+        type: "check",
+        message: `Key not found on remote chain`,
+      });
+      return;
+    }
+
+    // Check if condition is met
+    if (!checkCondition(sub.condition, proof.value)) {
+      addEvent({
+        subscription_id: sub.id,
+        type: "check",
+        message: `Condition not met (value: ${new TextDecoder().decode(proof.value).slice(0, 80)}...)`,
+      });
+      return;
+    }
+
+    addEvent({
+      subscription_id: sub.id,
+      type: "condition_met",
+      message: `Condition met at height ${proof.height}! Submitting proof...`,
+    });
+
+    // Fetch app hash and build merkle proof
+    const appHash = await fetchAppHash(proof.height);
+    const merkleProof = buildMerkleProof(proof.proofOps);
+
+    // Sign and submit
+    const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, {
+      prefix: "cosmos",
+    });
+    const [account] = await wallet.getAccounts();
+    const client = await SigningCosmWasmClient.connectWithSigner(HUB_RPC, wallet, {
+      gasPrice: GasPrice.fromString("0.005uatom"),
+    });
+
+    const msg = {
+      submit_proof: {
+        subscription_id: sub.id,
+        height: {
+          revision_number: NEUTRON_REVISION_NUMBER,
+          revision_height: proof.height,
+        },
+        app_hash: toBase64(appHash),
+        proof: toBase64(merkleProof),
+        key: toBase64(proof.key),
+        value: toBase64(proof.value),
+      },
+    };
+
+    const result = await client.execute(
+      account.address,
+      INTERCHAIN_EVENTS_CONTRACT,
+      msg,
+      "auto"
+    );
+
+    client.disconnect();
+
+    addEvent({
+      subscription_id: sub.id,
+      type: "proof_submitted",
+      message: `Proof submitted! TX: ${result.transactionHash}`,
+      tx_hash: result.transactionHash,
+    });
+  } catch (e: any) {
+    addEvent({
+      subscription_id: sub.id,
+      type: "error",
+      message: `Error: ${e.message || String(e)}`,
+    });
+  }
 }
 
 async function pollOnce() {
