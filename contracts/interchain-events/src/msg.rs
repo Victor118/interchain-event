@@ -16,6 +16,8 @@ pub enum ExecuteMsg {
         client_id: String,
         /// Merkle key path: ["store_name"] (e.g., ["wasm"]).
         key_path: Vec<String>,
+        /// The exact IAVL key to watch (raw bytes). The submitted proof must match this key.
+        watch_key: Binary,
         /// Condition to evaluate against the proven value.
         condition: SubscriptionCondition,
         /// Contract address to call when the condition is verified.

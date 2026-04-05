@@ -33,16 +33,11 @@
           </div>
 
           <!-- Condition -->
-          <div v-if="isExistsOnly" class="field">
-            <label>Condition</label>
-            <div class="field-value">Exists</div>
-          </div>
-
-          <div v-else class="field">
+          <div class="field">
             <label>Condition</label>
             <div class="condition-picker">
               <button
-                v-for="c in leafConditions"
+                v-for="c in allConditions"
                 :key="c"
                 class="condition-btn"
                 :class="{ 'condition-btn--active': condition === c }"
@@ -80,6 +75,26 @@
               :placeholder="currentValue ?? ''"
             />
             <div class="field-hint">Pre-filled with current value. Edit if needed.</div>
+          </div>
+
+          <!-- JSON Path Equals -->
+          <div v-if="condition === 'JsonPathEquals'" class="field">
+            <label>JSON field path</label>
+            <input
+              v-model="jsonPath"
+              class="input"
+              placeholder="e.g. status or result.score"
+            />
+            <div class="field-hint">Dot-separated path into the JSON value</div>
+          </div>
+          <div v-if="condition === 'JsonPathEquals'" class="field">
+            <label>Expected field value</label>
+            <input
+              v-model="jsonExpected"
+              class="input"
+              :placeholder="jsonPathPreview ?? 'e.g. approved'"
+            />
+            <div v-if="jsonPathPreview" class="field-hint">Current: {{ jsonPathPreview }}</div>
           </div>
 
           <!-- Callback contract -->
@@ -125,15 +140,41 @@
         </div>
 
         <div class="modal-footer">
+          <!-- Success message -->
+          <div v-if="submitResult" class="submit-success">
+            <div class="success-icon">&#10003;</div>
+            <div>
+              <div class="success-title">Subscription created!</div>
+              <div v-if="submitResult.subscriptionId" class="success-detail">ID: {{ submitResult.subscriptionId }}</div>
+              <div class="success-detail">TX: {{ submitResult.txHash.slice(0, 16) }}...</div>
+            </div>
+          </div>
+
+          <!-- Error message -->
+          <div v-if="submitError" class="submit-error">{{ submitError }}</div>
+
+          <!-- Preview -->
           <div class="modal-preview">
             <button class="preview-toggle" @click="showPreview = !showPreview">
               {{ showPreview ? 'Hide' : 'Show' }} JSON preview
             </button>
             <pre v-if="showPreview" class="preview-json">{{ jsonPreview }}</pre>
           </div>
+
           <div class="modal-actions">
-            <button class="btn btn--secondary" @click="$emit('close')">Cancel</button>
-            <button class="btn btn--primary" @click="copyJson">Copy JSON</button>
+            <button class="btn btn--secondary" @click="emit('close')">
+              {{ submitResult ? 'Close' : 'Cancel' }}
+            </button>
+            <button
+              v-if="!submitResult"
+              class="btn btn--primary"
+              :disabled="submitting"
+              @click="handleSubmit"
+            >
+              <template v-if="submitting">Submitting...</template>
+              <template v-else-if="!connected">Connect Keplr & Subscribe</template>
+              <template v-else>Subscribe</template>
+            </button>
           </div>
         </div>
       </div>
@@ -151,15 +192,18 @@ const props = defineProps<{
   preSearchKey?: string | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
+  subscribed: [{ txHash: string; subscriptionId?: number }]
 }>()
 
-const leafConditions = ['Equals', 'GreaterThan', 'LessThan'] as const
-type LeafCondition = typeof leafConditions[number]
+const { address, connected, connect, executeSubscribe } = useKeplr()
+const submitting = ref(false)
+const submitError = ref<string | null>(null)
+const submitResult = ref<{ txHash: string; subscriptionId?: number } | null>(null)
 
-// Is this purely an Exists subscription?
-const isExistsOnly = computed(() => props.preCondition === 'Exists')
+const allConditions = ['Exists', 'Equals', 'JsonPathEquals', 'GreaterThan', 'LessThan'] as const
+type Condition = typeof allConditions[number]
 
 // Determine the current value: from leaf node or from search result
 const currentValue = computed(() => {
@@ -181,19 +225,39 @@ const displayPath = computed(() => {
   return base
 })
 
-const condition = ref<LeafCondition>(
-  (props.preCondition && props.preCondition !== 'Exists')
-    ? props.preCondition as LeafCondition
-    : 'Equals'
+const condition = ref<Condition>(
+  (props.preCondition as Condition) ?? 'JsonPathEquals'
 )
 const threshold = ref('')
 const encoding = ref('Numeric')
 const expectedValue = ref(currentValue.value ?? '')
-const callbackContract = ref('')
+const jsonPath = ref('')
+const jsonExpected = ref('')
+
+// Try to extract a preview of the json path value from current value
+const jsonPathPreview = computed(() => {
+  if (!jsonPath.value || !currentValue.value) return null
+  try {
+    const parsed = JSON.parse(currentValue.value)
+    let current = parsed
+    for (const segment of jsonPath.value.split('.')) {
+      if (current && typeof current === 'object' && segment in current) {
+        current = current[segment]
+      } else {
+        return null
+      }
+    }
+    return String(current)
+  } catch {
+    return null
+  }
+})
+const PROOF_CALLBACK_CONTRACT = 'cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57'
+
+const callbackContract = ref(PROOF_CALLBACK_CONTRACT)
 const callbackMsg = ref('{"on_proof_verified":{}}')
-const clientId = ref('')
+const clientId = ref('07-tendermint-1119')
 const expiresAfter = ref('')
-const showPreview = ref(false)
 
 const jsonPreview = computed(() => {
   const msg: any = {
@@ -218,11 +282,14 @@ const jsonPreview = computed(() => {
 })
 
 function buildCondition() {
-  if (isExistsOnly.value) {
+  if (condition.value === 'Exists') {
     return 'exists'
   }
   if (condition.value === 'Equals') {
     return { equals: { expected: expectedValue.value } }
+  }
+  if (condition.value === 'JsonPathEquals') {
+    return { json_path_equals: { path: jsonPath.value, expected: jsonExpected.value } }
   }
   if (condition.value === 'GreaterThan') {
     return { greater_than: { threshold: threshold.value, encoding: encoding.value.toLowerCase() } }
@@ -232,8 +299,57 @@ function buildCondition() {
   }
 }
 
-function copyJson() {
-  navigator.clipboard.writeText(jsonPreview.value)
+const showPreview = ref(false)
+
+async function handleSubmit() {
+  submitError.value = null
+
+  if (!connected.value) {
+    await connect()
+    if (!connected.value) return
+  }
+
+  if (!clientId.value) {
+    submitError.value = 'IBC Client ID is required'
+    return
+  }
+  if (!storeKey.value) {
+    submitError.value = 'Watch key not available — select a specific state entry'
+    return
+  }
+  if (!callbackContract.value) {
+    submitError.value = 'Callback contract is required'
+    return
+  }
+
+  // Convert hex store key to base64 for the contract
+  const watchKeyBytes = new Uint8Array(
+    (storeKey.value.match(/.{2}/g) ?? []).map((b: string) => parseInt(b, 16))
+  )
+  const watchKeyBase64 = btoa(String.fromCharCode(...watchKeyBytes))
+
+  submitting.value = true
+  try {
+    const msg: any = {
+      subscribe: {
+        client_id: clientId.value,
+        key_path: [storeName.value],
+        watch_key: watchKeyBase64,
+        condition: buildCondition(),
+        callback_contract: callbackContract.value,
+        callback_msg: btoa(callbackMsg.value || '{}'),
+        expires_after_blocks: expiresAfter.value ? parseInt(expiresAfter.value) : null,
+      },
+    }
+
+    const result = await executeSubscribe(msg)
+    submitResult.value = result
+    emit('subscribed', result)
+  } catch (e: any) {
+    submitError.value = e.message || 'Transaction failed'
+  } finally {
+    submitting.value = false
+  }
 }
 
 function truncate(str: string, max: number): string {
@@ -481,5 +597,49 @@ function truncate(str: string, max: number): string {
 
 .btn--primary:hover {
   opacity: 0.9;
+}
+
+.btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submit-success {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(80, 200, 120, 0.1);
+  border: 1px solid rgba(80, 200, 120, 0.3);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.success-icon {
+  font-size: 20px;
+  color: #50c878;
+}
+
+.success-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #50c878;
+}
+
+.success-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.submit-error {
+  padding: 8px 12px;
+  background: rgba(220, 80, 80, 0.1);
+  border: 1px solid rgba(220, 80, 80, 0.3);
+  border-radius: 6px;
+  color: #dc5050;
+  font-size: 12px;
+  margin-bottom: 12px;
+  word-break: break-word;
 }
 </style>

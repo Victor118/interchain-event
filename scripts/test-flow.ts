@@ -155,10 +155,14 @@ async function createSubscription(
 
   const callbackMsg = toBase64(toUtf8(JSON.stringify({ on_proof_verified: {} })));
 
+  // Build the watch_key (IAVL key for the attestation)
+  const watchKey = buildAttestationIavlKey(attestationId);
+
   const msg = {
     subscribe: {
       client_id: clientId,
       key_path: ["wasm"],
+      watch_key: toBase64(watchKey),
       condition: { json_path_equals: { path: "status", expected: "approved" } },
       callback_contract: PROOF_CALLBACK_ADDRESS,
       callback_msg: callbackMsg,

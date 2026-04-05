@@ -24,6 +24,12 @@ pub enum ContractError {
     #[error("callback_contract cannot be empty")]
     EmptyCallbackContract,
 
+    #[error("watch_key cannot be empty")]
+    EmptyWatchKey,
+
+    #[error("Submitted key does not match subscription watch_key")]
+    KeyMismatch,
+
     #[error("Proven value does not match expected value")]
     ValueMismatch,
 

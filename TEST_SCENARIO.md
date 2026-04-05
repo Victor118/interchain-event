@@ -4,7 +4,7 @@
 
 | Chain | Contract | Code ID | Address |
 |---|---|---|---|
-| Cosmos Hub (`cosmoshub-4`) | interchain-events v2 | 476 | `cosmos13mwx9yrcs9ccns78h6dpl5u5jlutu24vsngzu7y7sjgm77cwjdqsktmyxq` |
+| Cosmos Hub (`cosmoshub-4`) | interchain-events v6 | 481 | `cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0` |
 | Cosmos Hub (`cosmoshub-4`) | proof-callback | 477 | `cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57` |
 | Neutron (`neutron-1`) | attestation-registry | 5237 | `neutron1dhw2cyurukdvl9v36lkmd7p900u89cdalytv5a7tluzhkevd89wsda4wjl` |
 
@@ -157,19 +157,19 @@ Then build a `MsgUpdateClient` with the header and include it as the first messa
 
 ## Step 6: Create a subscription on the Hub
 
-Create a subscription that triggers when the attestation exists on Neutron:
+Create a subscription that triggers when the attestation status is "approved" on Neutron:
 
 ```bash
-gaiad tx wasm execute cosmos1ukwm6w9gra4cypppqyf8m603w9qg2kamdhhj29quqna6zy5yqcnsuf2vtr \
+gaiad tx wasm execute cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0 \
   '{
     "subscribe": {
-      "client_id": "07-tendermint-XXX",
-      "key_path": ["wasm", "<raw_iavl_key_as_string>"],
-      "expected_value": "<base64_encoded_attestation_value>",
-      "action": {
-        "type_url": "/cosmos.bank.v1beta1.MsgSend",
-        "value": "<base64_protobuf_encoded_MsgSend>"
-      }
+      "client_id": "07-tendermint-1119",
+      "key_path": ["wasm"],
+      "watch_key": "<base64_iavl_key>",
+      "condition": {"json_path_equals": {"path": "status", "expected": "approved"}},
+      "callback_contract": "cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57",
+      "callback_msg": "eyJvbl9wcm9vZl92ZXJpZmllZCI6e319",
+      "expires_after_blocks": null
     }
   }' \
   --from deployer --keyring-backend file \
@@ -178,22 +178,32 @@ gaiad tx wasm execute cosmos1ukwm6w9gra4cypppqyf8m603w9qg2kamdhhj29quqna6zy5yqcn
   --chain-id cosmoshub-4
 ```
 
-### Action encoding
+### Subscribe parameters
 
-The `action` is a raw protobuf message. For a simple `MsgSend`:
+| Parameter | Description |
+|---|---|
+| `client_id` | IBC light client ID tracking the remote chain (e.g. `07-tendermint-1119` for Neutron) |
+| `key_path` | Merkle store name (e.g. `["wasm"]`). Used for the SimpleTree proof level |
+| `watch_key` | The exact IAVL key to watch (base64-encoded raw bytes). The contract verifies that the submitted proof matches this key — prevents proving a different key |
+| `condition` | Trigger condition: `"exists"`, `{"equals": {"expected": "<base64>"}}`, `{"json_path_equals": {"path": "status", "expected": "approved"}}`, `{"greater_than": {"threshold": "<base64>", "encoding": "numeric"}}`, `{"less_than": ...}` |
+| `callback_contract` | Contract address to call when the proof is verified |
+| `callback_msg` | Base64-encoded JSON message to send to the callback contract |
+| `expires_after_blocks` | Optional expiry in blocks from creation (null = no expiry) |
 
-```protobuf
-// /cosmos.bank.v1beta1.MsgSend
-message MsgSend {
-  string from_address = 1;  // the interchain-events contract address
-  string to_address = 2;    // recipient
-  repeated Coin amount = 3;
-}
+### watch_key construction
+
+The `watch_key` is the raw IAVL key bytes that identify the state entry on the remote chain. For wasm contract state (cw-storage-plus Map encoding):
+
+```
+\x03 + <contract_address_bytes_32> + <2-byte BE namespace length> + <namespace> + <map_key>
 ```
 
-The `from_address` must be the interchain-events contract address (it executes the message). The contract needs to hold funds for this to work.
+Example for `attestations::cosmos1abc` in the attestation-registry contract:
+```
+03 + 6ddcac1383e59acf9591d7edb6f8257bf872e1bdf916ca77cbff057b658d395d + 000c + 6174746573746174696f6e73 + 636f736d6f7331616263
+```
 
-For testing, a simpler action could be a `MsgExecuteContract` that calls another contract, or even just using `Exists` condition without `expected_value` to verify the proof mechanism works.
+The frontend state explorer computes this automatically when creating a subscription.
 
 ---
 
@@ -202,7 +212,7 @@ For testing, a simpler action could be a `MsgExecuteContract` that calls another
 Convert the proof from `abci_query` format (ProofOps) to `MerkleProof` format (two CommitmentProof entries), then submit:
 
 ```bash
-gaiad tx wasm execute cosmos1ukwm6w9gra4cypppqyf8m603w9qg2kamdhhj29quqna6zy5yqcnsuf2vtr \
+gaiad tx wasm execute cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0 \
   '{
     "submit_proof": {
       "subscription_id": 1,
@@ -210,6 +220,7 @@ gaiad tx wasm execute cosmos1ukwm6w9gra4cypppqyf8m603w9qg2kamdhhj29quqna6zy5yqcn
         "revision_number": 2,
         "revision_height": <proof_height>
       },
+      "app_hash": "<base64_app_hash>",
       "proof": "<base64_MerkleProof>",
       "key": "<base64_iavl_key>",
       "value": "<base64_value>"
@@ -220,6 +231,17 @@ gaiad tx wasm execute cosmos1ukwm6w9gra4cypppqyf8m603w9qg2kamdhhj29quqna6zy5yqcn
   --node https://cosmos-rpc.polkachu.com:443 \
   --chain-id cosmoshub-4
 ```
+
+### SubmitProof parameters
+
+| Parameter | Description |
+|---|---|
+| `subscription_id` | ID of the subscription to trigger |
+| `height` | Height on the remote chain at which the proof was generated |
+| `app_hash` | AppHash (multistore root) at the given height. POC: provided by submitter. Production: read from IBC light client |
+| `proof` | Base64-encoded MerkleProof (two CommitmentProofs: IAVL + SimpleTree) |
+| `key` | The IAVL key being proven (base64). Must match the subscription's `watch_key` |
+| `value` | The value being proven (base64). Condition is evaluated against this value |
 
 ### Proof format conversion
 
@@ -241,19 +263,28 @@ So you need to:
 
 ---
 
-## Recommended: Build a Script
+## Automated Test Script
 
-Steps 4-7 involve significant protobuf encoding/decoding and are best handled by a script. A TypeScript or Python script should:
+The `scripts/` directory contains a TypeScript script that automates the full flow:
 
-1. Query the attestation state on Neutron with `abci_query?prove=true`
-2. Parse the ProofOps response
-3. Build the MerkleProof protobuf
-4. Optionally build a MsgUpdateClient if the ConsensusState is missing
-5. Build and submit the SubmitProof transaction to the Hub
+```bash
+docker compose up -d scripts
+docker compose exec scripts npm install
 
-Libraries needed:
-- **TypeScript**: `@cosmjs/stargate`, `@cosmjs/tendermint-rpc`, `cosmjs-types`, `protobufjs`
-- **Python**: `cosmpy`, `grpcio`, `protobuf`
+# Full flow (write attestation + subscribe + prove + verify callback):
+docker compose exec \
+  -e MNEMONIC_HUB="..." \
+  -e MNEMONIC_NEUTRON="..." \
+  scripts npx tsx test-flow.ts
+
+# Submit proof for an existing subscription:
+docker compose exec \
+  -e MNEMONIC_HUB="..." \
+  scripts npx tsx test-flow.ts --submit-proof --subscription-id=1
+
+# Read-only query:
+docker compose exec scripts npx tsx test-flow.ts --query-only
+```
 
 ---
 
@@ -261,25 +292,21 @@ Libraries needed:
 
 1. **IAVL key construction**: Must exactly match cw-storage-plus encoding (namespace length prefix + namespace + key)
 2. **Proof format**: Converting from `tendermint.crypto.ProofOps` to `ibc.core.commitment.v1.MerkleProof`
-3. **ConsensusState availability**: The light client must have a ConsensusState at the exact proof height, otherwise a `MsgUpdateClient` is needed
-4. **Action execution**: The contract address is the sender of the action message, so it must have the necessary permissions/funds
-5. **Neutron revision_number**: Neutron uses revision_number `2` (not `1`)
+3. **AppHash source**: The Hub disables gRPC/Stargate queries for CosmWasm. The POC passes app_hash as parameter. Production would use `VerifyMembership` (see [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023))
+4. **Neutron revision_number**: Neutron uses revision_number `2` (not `1`)
 
-## Simpler First Test
+## Quick Verification
 
-Before the full flow, verify the subscription mechanism works by creating a subscription and checking it:
+Query existing subscriptions and callback events:
 
 ```bash
-# Create a simple subscription
-gaiad tx wasm execute cosmos1ukwm6w9gra4cypppqyf8m603w9qg2kamdhhj29quqna6zy5yqcnsuf2vtr \
-  '{"subscribe":{"client_id":"07-tendermint-0","key_path":["wasm","test"],"expected_value":null,"action":{"type_url":"/cosmos.bank.v1beta1.MsgSend","value":"dGVzdA=="}}}' \
-  --from deployer --keyring-backend file \
-  --gas auto --gas-adjustment 1.3 --gas-prices 0.005uatom \
-  --node https://cosmos-rpc.polkachu.com:443 \
-  --chain-id cosmoshub-4
-
-# Query the subscription
-gaiad q wasm contract-state smart cosmos1ukwm6w9gra4cypppqyf8m603w9qg2kamdhhj29quqna6zy5yqcnsuf2vtr \
+# Query a subscription
+gaiad q wasm contract-state smart cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0 \
   '{"subscription":{"id":1}}' \
+  --node https://cosmos-rpc.polkachu.com:443
+
+# Query proof-callback events
+gaiad q wasm contract-state smart cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57 \
+  '{"events":{}}' \
   --node https://cosmos-rpc.polkachu.com:443
 ```

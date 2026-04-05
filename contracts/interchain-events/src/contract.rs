@@ -104,6 +104,7 @@ pub fn execute(
         ExecuteMsg::Subscribe {
             client_id,
             key_path,
+            watch_key,
             condition,
             callback_contract,
             callback_msg,
@@ -114,6 +115,7 @@ pub fn execute(
             info,
             client_id,
             key_path,
+            watch_key,
             condition,
             callback_contract,
             callback_msg,
@@ -137,6 +139,7 @@ fn execute_subscribe(
     info: MessageInfo,
     client_id: String,
     key_path: Vec<String>,
+    watch_key: Binary,
     condition: SubscriptionCondition,
     callback_contract: String,
     callback_msg: Binary,
@@ -144,6 +147,9 @@ fn execute_subscribe(
 ) -> Result<Response, ContractError> {
     if key_path.is_empty() {
         return Err(ContractError::EmptyKeyPath);
+    }
+    if watch_key.is_empty() {
+        return Err(ContractError::EmptyWatchKey);
     }
     if callback_contract.is_empty() {
         return Err(ContractError::EmptyCallbackContract);
@@ -159,6 +165,7 @@ fn execute_subscribe(
         creator: info.sender.to_string(),
         client_id,
         key_path,
+        watch_key,
         condition,
         callback_contract,
         callback_msg,
@@ -208,13 +215,13 @@ fn execute_submit_proof(
         }
     }
 
+    // Verify that the submitted key matches the subscription's watch_key
+    if key.as_slice() != sub.watch_key.as_slice() {
+        return Err(ContractError::KeyMismatch);
+    }
+
     // POC: app_hash is provided by the submitter.
-    // In production, this would be read from the IBC light client ConsensusState:
-    //   deps.querier.query(&QueryRequest::Grpc(GrpcQuery {
-    //       path: "/ibc.core.client.v1.Query/ConsensusState",
-    //       data: encode_consensus_state_request(&sub.client_id, height.revision_number, height.revision_height).into(),
-    //   }))
-    // Then extract_app_hash(response) to get the trusted root.
+    // In production, this would be read from the IBC light client ConsensusState.
 
     // Verify two-level ICS-23 proof against the provided app_hash
     verify_chained_membership(&app_hash, proof.as_slice(), &sub.key_path, &key, &value)?;
@@ -381,6 +388,7 @@ fn query_active_watches_by_client(
                         subscription_id: sub.id,
                         client_id: sub.client_id,
                         key_path: sub.key_path,
+                        watch_key: sub.watch_key,
                         condition: sub.condition,
                     })
                 } else {
@@ -416,6 +424,10 @@ mod tests {
         Binary::from(b"{\"on_proof_verified\":{}}".as_slice())
     }
 
+    fn sample_watch_key() -> Binary {
+        Binary::from(b"\x03test_contract\x00\x0cattestationstest_key".as_slice())
+    }
+
     #[test]
     fn test_instantiate() {
         let mut deps = mock_dependencies();
@@ -437,6 +449,7 @@ mod tests {
         let msg = ExecuteMsg::Subscribe {
             client_id: "07-tendermint-42".to_string(),
             key_path: vec!["wasm".to_string()],
+            watch_key: sample_watch_key(),
             condition: SubscriptionCondition::Equals { expected: Binary::from(b"true") },
             callback_contract: sample_callback_contract(),
             callback_msg: sample_callback_msg(),
@@ -473,6 +486,7 @@ mod tests {
         let msg = ExecuteMsg::Subscribe {
             client_id: "07-tendermint-1".to_string(),
             key_path: vec!["bank".to_string()],
+            watch_key: sample_watch_key(),
             condition: SubscriptionCondition::Exists,
             callback_contract: sample_callback_contract(),
             callback_msg: sample_callback_msg(),
@@ -500,6 +514,7 @@ mod tests {
         let msg = ExecuteMsg::Subscribe {
             client_id: "07-tendermint-1".to_string(),
             key_path: vec![],
+            watch_key: sample_watch_key(),
             condition: SubscriptionCondition::Exists,
             callback_contract: sample_callback_contract(),
             callback_msg: sample_callback_msg(),
@@ -519,6 +534,7 @@ mod tests {
         let msg = ExecuteMsg::Subscribe {
             client_id: "07-tendermint-1".to_string(),
             key_path: vec!["wasm".to_string()],
+            watch_key: sample_watch_key(),
             condition: SubscriptionCondition::Exists,
             callback_contract: "".to_string(),
             callback_msg: sample_callback_msg(),
@@ -564,6 +580,7 @@ mod tests {
         let msg = ExecuteMsg::Subscribe {
             client_id: "07-tendermint-1".to_string(),
             key_path: vec!["wasm".to_string()],
+            watch_key: sample_watch_key(),
             condition: SubscriptionCondition::Exists,
             callback_contract: sample_callback_contract(),
             callback_msg: sample_callback_msg(),
@@ -607,6 +624,7 @@ mod tests {
             let msg = ExecuteMsg::Subscribe {
                 client_id: format!("07-tendermint-{i}"),
                 key_path: vec!["wasm".to_string()],
+            watch_key: sample_watch_key(),
                 condition: SubscriptionCondition::Exists,
                 callback_contract: sample_callback_contract(),
                 callback_msg: sample_callback_msg(),
@@ -673,6 +691,7 @@ mod tests {
             let msg = ExecuteMsg::Subscribe {
                 client_id: "07-tendermint-1".to_string(),
                 key_path: vec!["wasm".to_string()],
+            watch_key: sample_watch_key(),
                 condition: SubscriptionCondition::Exists,
                 callback_contract: sample_callback_contract(),
                 callback_msg: sample_callback_msg(),
@@ -696,6 +715,7 @@ mod tests {
             let msg = ExecuteMsg::Subscribe {
                 client_id: "07-tendermint-42".to_string(),
                 key_path: vec!["wasm".to_string()],
+            watch_key: sample_watch_key(),
                 condition: SubscriptionCondition::Exists,
                 callback_contract: sample_callback_contract(),
                 callback_msg: sample_callback_msg(),
@@ -708,6 +728,7 @@ mod tests {
                 let msg2 = ExecuteMsg::Subscribe {
                     client_id: "07-tendermint-99".to_string(),
                     key_path: vec!["bank".to_string()],
+                    watch_key: sample_watch_key(),
                     condition: SubscriptionCondition::Exists,
                     callback_contract: sample_callback_contract(),
                     callback_msg: sample_callback_msg(),

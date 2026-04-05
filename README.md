@@ -76,7 +76,7 @@ The POC demonstrates:
 
 | Chain | Contract | Code ID | Address |
 |---|---|---|---|
-| Cosmos Hub | interchain-events v5 | 480 | `cosmos14w00gs7h997xhvsl230n899wjpvtlemr37h4wla6w93y8z3dpvgq6fqrn0` |
+| Cosmos Hub | interchain-events v6 | 481 | `cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0` |
 | Cosmos Hub | proof-callback | 477 | `cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57` |
 | Neutron | attestation-registry | 5237 | `neutron1dhw2cyurukdvl9v36lkmd7p900u89cdalytv5a7tluzhkevd89wsda4wjl` |
 

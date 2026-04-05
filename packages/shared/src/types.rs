@@ -59,6 +59,8 @@ pub struct Subscription {
     pub creator: String,
     pub client_id: String,
     pub key_path: Vec<String>,
+    /// The exact IAVL key being watched. SubmitProof must match this key.
+    pub watch_key: Binary,
     pub condition: SubscriptionCondition,
     /// Contract to call when the proof is verified.
     pub callback_contract: String,
@@ -75,5 +77,7 @@ pub struct WatchInfo {
     pub subscription_id: u64,
     pub client_id: String,
     pub key_path: Vec<String>,
+    /// The exact IAVL key to watch (raw bytes). Watcher uses this to query the remote chain.
+    pub watch_key: Binary,
     pub condition: SubscriptionCondition,
 }
