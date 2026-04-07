@@ -23,6 +23,7 @@ No oracle. No trusted third party. The proof is either mathematically valid or r
 - **Conditional triggers** — `exists`, `equals`, `json_path_equals`, `greater_than`, `less_than`
 - **Callback pattern** — Proof verification triggers an arbitrary smart contract call
 - **Multi-hop routing** — Chain A can verify Chain C's state through Chain B, via subscription chaining
+- **Watchable State Convention** — Chains that want to be easily observed can adopt standardized state paths (`events/<type>/<id>`), enabling plug-and-play discovery and subscription templates. Not required — unilateral observation works on any chain — but chains that adopt the convention become instantly composable
 
 ## Architecture
 

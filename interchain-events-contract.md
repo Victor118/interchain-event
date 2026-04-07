@@ -405,7 +405,61 @@ The infrastructure is built. The enterprise clients are arriving. The coordinati
 
 ---
 
-## Annex A: Dual-Proof Change Detection
+## Annex A: Watchable State Convention
+
+### From unilateral observation to cooperative discoverability
+
+Interchain Events works today on any chain without any cooperation from the observed chain. A watcher reads publicly available Merkle state and submits a proof — the remote chain doesn't need to know or care.
+
+But as the ecosystem grows, a natural question arises: what if chains that *want* to be observed made it easier?
+
+### The concept
+
+Chains that anticipate being watched can adopt a voluntary convention for exposing state in standardized, well-known paths. This is analogous to web standards like `robots.txt` or XML sitemaps — not required, but sites that adopt them are better indexed and more discoverable.
+
+A chain that follows the Watchable State Convention would:
+
+1. **Use standardized path prefixes** — Emit events under well-known paths that watchers and the State Explorer can discover automatically:
+   - `watchable/compliance/<address>` — KYC/AML status
+   - `watchable/settlements/<id>` — Settlement finality status
+   - `watchable/certifications/<id>` — Audit and certification results
+   - `watchable/balances/<address>/<denom>` — Balance thresholds
+
+2. **Use a consistent data format** — JSON with a predictable schema, so conditions like `json_path_equals` work without reverse-engineering each chain's encoding:
+   ```json
+   {
+     "status": "approved",
+     "timestamp": "2026-03-15T10:00:00Z",
+     "metadata": { "provider": "chainA", "version": 1 }
+   }
+   ```
+
+3. **Publish a manifest** — A well-known state key (e.g., `watchable/_manifest`) listing available event types, their paths, data schemas, and suggested conditions. The State Explorer reads this manifest and presents available events as a browsable catalog.
+
+### Why chains would adopt this
+
+- **Composability by default** — A chain that follows the convention is instantly subscribable by any other chain on the Hub. No documentation exchange, no bilateral discussions about data formats.
+- **Reduced integration friction** — Enterprise clients connecting through Cosmos Labs can browse a partner chain's available events in the State Explorer and subscribe in clicks, not weeks.
+- **Subscription templates** — Standardized paths and schemas enable reusable subscription templates. A "compliance gate" template works identically whether the source is Progmat, Ondo, or any future chain that follows the convention.
+- **Watcher efficiency** — Watchers can monitor well-known prefixes across multiple chains with a single configuration, rather than maintaining custom path mappings per chain.
+
+### What this is NOT
+
+This is not a protocol requirement. The core value proposition of Interchain Events — unilateral, trustless observation of any chain's state — remains unchanged. A chain that never adopts the convention is still fully observable via its raw Merkle state.
+
+The convention is an **ecosystem accelerator**: chains that adopt it get better tooling, faster integration, and broader composability. Chains that don't are still perfectly usable, just with more manual configuration.
+
+### Adoption path
+
+1. **Phase 1 (current)** — Interchain Events works on raw state paths. Early adopters manually configure subscriptions based on chain-specific state layouts.
+2. **Phase 2** — The State Explorer makes any chain's state browsable, reducing the need for documentation. Chains can optionally organize their state under `watchable/` prefixes.
+3. **Phase 3** — As adoption grows, the `watchable/` convention becomes a de facto standard. Cosmos Labs recommends it as part of Network Manager onboarding. New enterprise chains emit watchable events by default.
+
+The end state: deploying a new enterprise chain on Cosmos automatically makes its key business events discoverable and subscribable by every other chain in the ecosystem. The interchain becomes a self-describing network where chains publish events as naturally as web services expose APIs.
+
+---
+
+## Annex B: Dual-Proof Change Detection
 
 ### The problem
 
