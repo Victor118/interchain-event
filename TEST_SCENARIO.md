@@ -4,8 +4,8 @@
 
 | Chain | Contract | Code ID | Address |
 |---|---|---|---|
-| Cosmos Hub (`cosmoshub-4`) | interchain-events v6 | 481 | `cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0` |
-| Cosmos Hub (`cosmoshub-4`) | proof-callback | 477 | `cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57` |
+| Cosmos Hub (`cosmoshub-4`) | interchain-events v7 | 501 | `cosmos1ul3v2sh4uqgvzr2c00dz2un6373hkunk0e0z9ay9x9td3uj7qdtqqggyqc` |
+| Cosmos Hub (`cosmoshub-4`) | proof-callback v2 | 502 | `cosmos108u0auz26aqgulr5exh4h2gadqar7qedcjj9yx7da5ramn0hlnmqj5plp2` |
 | Neutron (`neutron-1`) | attestation-registry | 5237 | `neutron1dhw2cyurukdvl9v36lkmd7p900u89cdalytv5a7tluzhkevd89wsda4wjl` |
 
 ### Previous deployments (deprecated)
@@ -160,14 +160,14 @@ Then build a `MsgUpdateClient` with the header and include it as the first messa
 Create a subscription that triggers when the attestation status is "approved" on Neutron:
 
 ```bash
-gaiad tx wasm execute cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0 \
+gaiad tx wasm execute cosmos1ul3v2sh4uqgvzr2c00dz2un6373hkunk0e0z9ay9x9td3uj7qdtqqggyqc \
   '{
     "subscribe": {
       "client_id": "07-tendermint-1119",
       "key_path": ["wasm"],
       "watch_key": "<base64_iavl_key>",
       "condition": {"json_path_equals": {"path": "status", "expected": "approved"}},
-      "callback_contract": "cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57",
+      "callback_contract": "cosmos108u0auz26aqgulr5exh4h2gadqar7qedcjj9yx7da5ramn0hlnmqj5plp2",
       "callback_msg": "eyJvbl9wcm9vZl92ZXJpZmllZCI6e319",
       "expires_after_blocks": null
     }
@@ -212,7 +212,7 @@ The frontend state explorer computes this automatically when creating a subscrip
 Convert the proof from `abci_query` format (ProofOps) to `MerkleProof` format (two CommitmentProof entries), then submit:
 
 ```bash
-gaiad tx wasm execute cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0 \
+gaiad tx wasm execute cosmos1ul3v2sh4uqgvzr2c00dz2un6373hkunk0e0z9ay9x9td3uj7qdtqqggyqc \
   '{
     "submit_proof": {
       "subscription_id": 1,
@@ -301,12 +301,12 @@ Query existing subscriptions and callback events:
 
 ```bash
 # Query a subscription
-gaiad q wasm contract-state smart cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0 \
+gaiad q wasm contract-state smart cosmos1ul3v2sh4uqgvzr2c00dz2un6373hkunk0e0z9ay9x9td3uj7qdtqqggyqc \
   '{"subscription":{"id":1}}' \
   --node https://cosmos-rpc.polkachu.com:443
 
 # Query proof-callback events
-gaiad q wasm contract-state smart cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57 \
+gaiad q wasm contract-state smart cosmos108u0auz26aqgulr5exh4h2gadqar7qedcjj9yx7da5ramn0hlnmqj5plp2 \
   '{"events":{}}' \
   --node https://cosmos-rpc.polkachu.com:443
 ```

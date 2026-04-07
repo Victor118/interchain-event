@@ -77,8 +77,8 @@ The POC demonstrates:
 
 | Chain | Contract | Code ID | Address |
 |---|---|---|---|
-| Cosmos Hub | interchain-events v6 | 481 | `cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0` |
-| Cosmos Hub | proof-callback | 477 | `cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57` |
+| Cosmos Hub | interchain-events v7 | 501 | `cosmos1ul3v2sh4uqgvzr2c00dz2un6373hkunk0e0z9ay9x9td3uj7qdtqqggyqc` |
+| Cosmos Hub | proof-callback v2 | 502 | `cosmos108u0auz26aqgulr5exh4h2gadqar7qedcjj9yx7da5ramn0hlnmqj5plp2` |
 | Neutron | attestation-registry | 5237 | `neutron1dhw2cyurukdvl9v36lkmd7p900u89cdalytv5a7tluzhkevd89wsda4wjl` |
 
 ## Project structure

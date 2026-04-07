@@ -252,10 +252,10 @@ const jsonPathPreview = computed(() => {
     return null
   }
 })
-const PROOF_CALLBACK_CONTRACT = 'cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57'
+const PROOF_CALLBACK_CONTRACT = 'cosmos108u0auz26aqgulr5exh4h2gadqar7qedcjj9yx7da5ramn0hlnmqj5plp2'
 
 const callbackContract = ref(PROOF_CALLBACK_CONTRACT)
-const callbackMsg = ref('{"on_proof_verified":{}}')
+const callbackMsg = ref('{"custom_action":{}}')
 const clientId = ref('07-tendermint-1119')
 const expiresAfter = ref('')
 

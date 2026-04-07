@@ -185,7 +185,7 @@ fn execute_submit_proof(
     deps: DepsMut,
     env: Env,
     subscription_id: u64,
-    _height: cross_chain_shared::types::Height,
+    height: cross_chain_shared::types::Height,
     app_hash: Binary,
     proof: Binary,
     key: Binary,
@@ -289,12 +289,22 @@ fn execute_submit_proof(
     sub.status = SubscriptionStatus::Triggered;
     SUBSCRIPTIONS.save(deps.storage, subscription_id, &sub)?;
 
-    // Step 6: Call the callback contract via SubMsg
+    // Step 6: Call the callback contract via SubMsg with the proven data.
+    // The callback_msg defined by the subscriber is wrapped with proof metadata,
+    // so the callback contract receives both its custom message and the proven value.
     // If the callback fails, the reply handler catches the error and marks the subscription as Failed.
     // The proof verification itself is NOT reverted.
+    let callback_payload = to_json_binary(&serde_json::json!({
+        "interchain_event": {
+            "subscription_id": subscription_id,
+            "proven_value": String::from_utf8_lossy(value.as_slice()).to_string(),
+            "height": height,
+            "callback_msg": sub.callback_msg,
+        }
+    }))?;
     let callback = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: sub.callback_contract.clone(),
-        msg: sub.callback_msg.clone(),
+        msg: callback_payload,
         funds: vec![],
     });
 
@@ -421,7 +431,7 @@ mod tests {
     }
 
     fn sample_callback_msg() -> Binary {
-        Binary::from(b"{\"on_proof_verified\":{}}".as_slice())
+        Binary::from(b"{\"custom_action\":{\"note\":\"test\"}}".as_slice())
     }
 
     fn sample_watch_key() -> Binary {

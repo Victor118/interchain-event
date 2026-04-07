@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interchain Events — KYC Compliance Flow</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0e1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    font-weight: 300;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #7b8ab8;
+    margin-bottom: 2rem;
+    opacity: 0;
+    animation: fadeIn 1s 0.5s forwards;
+  }
+
+  .scene {
+    position: relative;
+    width: 1100px;
+    height: 520px;
+  }
+
+  /* === CHAINS === */
+  .chain {
+    position: absolute;
+    width: 220px;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    opacity: 0;
+    transform: scale(1);
+  }
+
+  .chain-identity {
+    left: 0; top: 80px;
+    background: linear-gradient(135deg, #1a1e3a, #252a4a);
+    border: 1px solid #3a4070;
+    animation: fadeIn 0.6s 1s forwards;
+  }
+
+  .chain-hub {
+    left: 440px; top: 40px;
+    width: 240px;
+    background: linear-gradient(135deg, #1a2a3a, #1e3a4a);
+    border: 1px solid #2a5a7a;
+    animation: fadeIn 0.6s 1.3s forwards;
+  }
+
+  .chain-ondo {
+    right: 0; top: 80px;
+    background: linear-gradient(135deg, #1a3a2a, #254a3a);
+    border: 1px solid #3a7060;
+    animation: fadeIn 0.6s 1.6s forwards;
+  }
+
+  .chain-name {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #8899bb;
+    margin-bottom: 8px;
+  }
+
+  .chain-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .chain-identity .chain-title { color: #8b9fd4; }
+  .chain-hub .chain-title { color: #5ba8c8; }
+  .chain-ondo .chain-title { color: #5bc8a8; }
+
+  .chain-state {
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: #667;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.5s, border-color 0.5s;
+  }
+
+  /* === WATCHER === */
+  .watcher {
+    position: absolute;
+    left: 200px; top: 300px;
+    width: 180px;
+    background: linear-gradient(135deg, #2a1a3a, #3a254a);
+    border: 1px solid #5a3a7a;
+    border-radius: 16px;
+    padding: 16px;
+    text-align: center;
+    opacity: 0;
+    animation: fadeIn 0.6s 1.9s forwards;
+  }
+
+  .watcher .chain-title { color: #b88ad4; }
+
+  /* === ARROWS (SVG paths) === */
+  .arrows {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  .arrow-path {
+    fill: none;
+    stroke-width: 2;
+    stroke-dasharray: 8 4;
+    opacity: 0;
+  }
+
+  .arrow-dot {
+    r: 6;
+    opacity: 0;
+    filter: drop-shadow(0 0 6px currentColor);
+  }
+
+  /* === STEP LABELS === */
+  .step-label {
+    position: absolute;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 20px;
+    opacity: 0;
+    white-space: nowrap;
+  }
+
+  .step-1-label {
+    left: 60px; top: 250px;
+    background: rgba(139,159,212,0.15);
+    color: #8b9fd4;
+    border: 1px solid rgba(139,159,212,0.3);
+  }
+
+  .step-2-label {
+    left: 240px; top: 440px;
+    background: rgba(184,138,212,0.15);
+    color: #b88ad4;
+    border: 1px solid rgba(184,138,212,0.3);
+  }
+
+  .step-3-label {
+    left: 480px; top: 320px;
+    background: rgba(91,168,200,0.15);
+    color: #5ba8c8;
+    border: 1px solid rgba(91,168,200,0.3);
+  }
+
+  .step-4-label {
+    left: 760px; top: 250px;
+    background: rgba(91,200,168,0.15);
+    color: #5bc8a8;
+    border: 1px solid rgba(91,200,168,0.3);
+  }
+
+  /* === NARRATION === */
+  .narration {
+    margin-top: 2rem;
+    text-align: center;
+    font-size: 1rem;
+    color: #7b8ab8;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .narration-text {
+    opacity: 0;
+    position: absolute;
+    transition: opacity 0.5s;
+  }
+
+  .narration-text.active { opacity: 1; }
+
+  /* === ANIMATIONS === */
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+
+  @keyframes pulseGlow {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  .glow-overlay {
+    position: absolute;
+    inset: -4px;
+    border-radius: 20px;
+    pointer-events: none;
+    opacity: 0;
+    animation: pulseGlow 1.2s ease-in-out forwards;
+  }
+
+  /* State transitions */
+  .state-pending { color: #886; }
+  .state-approved { color: #5c5; }
+  .state-verified { color: #5ba8c8; }
+  .state-whitelisted { color: #5bc8a8; }
+
+  /* Controls */
+  .controls {
+    margin-top: 1.5rem;
+    opacity: 0;
+    animation: fadeIn 1s 2.5s forwards;
+  }
+
+  .play-btn {
+    background: linear-gradient(135deg, #2a3a5a, #3a4a7a);
+    border: 1px solid #4a5a8a;
+    color: #aabbdd;
+    padding: 12px 36px;
+    border-radius: 30px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    transition: all 0.3s;
+  }
+
+  .play-btn:hover {
+    background: linear-gradient(135deg, #3a4a7a, #4a5a9a);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(74,90,138,0.3);
+  }
+
+  .play-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+  }
+</style>
+</head>
+<body>
+
+<h1>Interchain Events — KYC Compliance Flow</h1>
+
+<div class="scene">
+  <!-- Chains -->
+  <div class="chain chain-identity" id="chainB">
+    <div class="chain-name">Identity Chain</div>
+    <div class="chain-title">KYC Provider</div>
+    <div class="chain-state" id="stateB">
+      <span id="stateBtext">kyc/0xABC = <span class="state-pending">"pending"</span></span>
+    </div>
+  </div>
+
+  <div class="chain chain-hub" id="hub">
+    <div class="chain-name">Cosmos Hub</div>
+    <div class="chain-title">Interchain Events</div>
+    <div class="chain-state" id="stateHub">
+      <span id="stateHubText" style="color:#556">Subscription active<br>watching kyc/0xABC</span>
+    </div>
+  </div>
+
+  <div class="chain chain-ondo" id="chainA">
+    <div class="chain-name">Ondo Chain</div>
+    <div class="chain-title">Tokenized Securities</div>
+    <div class="chain-state" id="stateA">
+      <span id="stateAtext">whitelist/0xABC = <span class="state-pending">false</span></span>
+    </div>
+  </div>
+
+  <!-- Watcher -->
+  <div class="watcher" id="watcher">
+    <div class="chain-name">Off-chain</div>
+    <div class="chain-title">Watcher</div>
+    <div class="chain-state" id="stateW" style="font-size:0.7rem; color:#556;">
+      Monitoring RPC...
+    </div>
+  </div>
+
+  <!-- Step labels -->
+  <div class="step-label step-1-label" id="label1">① KYC Approved</div>
+  <div class="step-label step-2-label" id="label2">② Change Detected</div>
+  <div class="step-label step-3-label" id="label3">③ Proof Verified → Callback</div>
+  <div class="step-label step-4-label" id="label4">④ ICA: Whitelist on Ondo</div>
+
+  <!-- Arrows SVG -->
+  <svg class="arrows" viewBox="0 0 1100 520">
+    <!-- Identity → Watcher (monitoring) -->
+    <path id="arrow1" class="arrow-path" stroke="#8b9fd4"
+          d="M 130 210 Q 140 300 220 330" />
+    <circle id="dot1" class="arrow-dot" fill="#8b9fd4" />
+
+    <!-- Watcher → Hub (submit proof) -->
+    <path id="arrow2" class="arrow-path" stroke="#b88ad4"
+          d="M 360 330 Q 420 280 470 200" />
+    <circle id="dot2" class="arrow-dot" fill="#b88ad4" />
+
+    <!-- Hub → Ondo (ICA) -->
+    <path id="arrow3" class="arrow-path" stroke="#5bc8a8"
+          d="M 680 160 Q 780 140 880 150" />
+    <circle id="dot3" class="arrow-dot" fill="#5bc8a8" />
+  </svg>
+</div>
+
+<div class="narration">
+  <span class="narration-text" id="n0">Press play to see the cross-chain KYC compliance flow</span>
+  <span class="narration-text" id="n1">An investor completes KYC on the Identity Chain...</span>
+  <span class="narration-text" id="n2">The watcher detects the state change via RPC</span>
+  <span class="narration-text" id="n3">Watcher submits an ICS-23 Merkle proof to the Hub</span>
+  <span class="narration-text" id="n4">The Hub verifies the proof cryptographically and triggers the callback</span>
+  <span class="narration-text" id="n5">The callback contract whitelists the investor on Ondo via ICA</span>
+  <span class="narration-text" id="n6">No oracle. No bilateral integration. Just math. ✓</span>
+</div>
+
+<div class="controls">
+  <button class="play-btn" id="playBtn" onclick="startAnimation()">▶ Play Animation</button>
+</div>
+
+<script>
+function narrate(id) {
+  document.querySelectorAll('.narration-text').forEach(n => n.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function animateAlongPath(dotEl, pathEl, duration) {
+  const path = pathEl;
+  const dot = dotEl;
+  const length = path.getTotalLength();
+  dot.style.opacity = '1';
+  path.style.opacity = '1';
+
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min((now - start) / duration, 1);
+    const eased = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+    const pt = path.getPointAtLength(eased * length);
+    dot.setAttribute('cx', pt.x);
+    dot.setAttribute('cy', pt.y);
+    if (t < 1) requestAnimationFrame(step);
+    else dot.style.opacity = '0.3';
+  }
+  requestAnimationFrame(step);
+}
+
+function showLabel(id) {
+  const el = document.getElementById(id);
+  el.style.transition = 'opacity 0.4s, transform 0.4s';
+  el.style.opacity = '1';
+  el.style.transform = 'translateY(0)';
+}
+
+function pulseElement(id, color) {
+  const el = document.getElementById(id);
+  const glow = document.createElement('div');
+  glow.className = 'glow-overlay';
+  glow.style.boxShadow = `0 0 30px 8px ${color}, inset 0 0 15px 2px ${color}`;
+  el.style.position = 'absolute';
+  el.appendChild(glow);
+  setTimeout(() => glow.remove(), 1300);
+}
+
+async function wait(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function startAnimation() {
+  const btn = document.getElementById('playBtn');
+  btn.disabled = true;
+  btn.textContent = '⏵ Playing...';
+
+  narrate('n0');
+  await wait(500);
+
+  // Step 1: KYC approved on Identity Chain
+  narrate('n1');
+  pulseElement('chainB', 'rgba(139,159,212,0.4)');
+  await wait(1200);
+  document.getElementById('stateBtext').innerHTML =
+    'kyc/0xABC = <span class="state-approved">"approved"</span>';
+  document.getElementById('stateB').style.borderColor = '#5c5';
+  showLabel('label1');
+  await wait(1800);
+
+  // Step 2: Watcher detects
+  narrate('n2');
+  animateAlongPath(
+    document.getElementById('dot1'),
+    document.getElementById('arrow1'),
+    1200
+  );
+  await wait(1400);
+  document.getElementById('stateW').innerHTML =
+    '<span style="color:#b88ad4">Change detected!<br>Fetching proof...</span>';
+  pulseElement('watcher', 'rgba(184,138,212,0.4)');
+  showLabel('label2');
+  await wait(2000);
+
+  // Step 3: Proof submitted to Hub
+  narrate('n3');
+  document.getElementById('stateW').innerHTML =
+    '<span style="color:#b88ad4">Submitting proof<br>to Cosmos Hub...</span>';
+  animateAlongPath(
+    document.getElementById('dot2'),
+    document.getElementById('arrow2'),
+    1200
+  );
+  await wait(1500);
+
+  narrate('n4');
+  pulseElement('hub', 'rgba(91,168,200,0.4)');
+  document.getElementById('stateHubText').innerHTML =
+    '<span class="state-verified">✓ Proof verified</span><br>Callback triggered';
+  showLabel('label3');
+  await wait(2500);
+
+  // Step 4: ICA to Ondo
+  narrate('n5');
+  animateAlongPath(
+    document.getElementById('dot3'),
+    document.getElementById('arrow3'),
+    1200
+  );
+  await wait(1500);
+  pulseElement('chainA', 'rgba(91,200,168,0.4)');
+  document.getElementById('stateAtext').innerHTML =
+    'whitelist/0xABC = <span class="state-whitelisted">true ✓</span>';
+  document.getElementById('stateA').style.borderColor = '#5bc8a8';
+  showLabel('label4');
+  await wait(2000);
+
+  // Final
+  narrate('n6');
+  document.getElementById('stateW').innerHTML =
+    '<span style="color:#6a6">Done ✓</span>';
+  await wait(2000);
+
+  btn.disabled = false;
+  btn.textContent = '↻ Replay';
+}
+
+// Init narration
+narrate('n0');
+</script>
+</body>
+</html>

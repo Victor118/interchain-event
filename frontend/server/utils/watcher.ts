@@ -13,7 +13,7 @@ const HUB_CHAIN_ID = "cosmoshub-4";
 const NEUTRON_REVISION_NUMBER = 2;
 
 const INTERCHAIN_EVENTS_CONTRACT =
-  "cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0";
+  "cosmos1ul3v2sh4uqgvzr2c00dz2un6373hkunk0e0z9ay9x9td3uj7qdtqqggyqc";
 
 // ---------------------------------------------------------------------------
 // Types

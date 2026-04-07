@@ -30,7 +30,12 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::OnProofVerified {} => {
+        ExecuteMsg::InterchainEvent {
+            subscription_id,
+            proven_value,
+            height,
+            callback_msg: _,
+        } => {
             let mut events = EVENTS.load(deps.storage)?;
             events.push(Event {
                 caller: info.sender.to_string(),
@@ -39,8 +44,12 @@ pub fn execute(
             EVENTS.save(deps.storage, &events)?;
 
             Ok(Response::new()
-                .add_attribute("action", "on_proof_verified")
-                .add_attribute("caller", info.sender))
+                .add_attribute("action", "interchain_event")
+                .add_attribute("caller", info.sender)
+                .add_attribute("subscription_id", subscription_id.to_string())
+                .add_attribute("proven_value", proven_value)
+                .add_attribute("height_revision", height.revision_number.to_string())
+                .add_attribute("height_block", height.revision_height.to_string()))
         }
     }
 }
@@ -59,7 +68,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
-    use cosmwasm_std::{from_json, Addr};
+    use cosmwasm_std::{from_json, Addr, Binary};
 
     #[test]
     fn test_full_flow() {
@@ -80,7 +89,15 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             info,
-            ExecuteMsg::OnProofVerified {},
+            ExecuteMsg::InterchainEvent {
+                subscription_id: 1,
+                proven_value: "{\"status\":\"approved\"}".to_string(),
+                height: cross_chain_shared::types::Height {
+                    revision_number: 1,
+                    revision_height: 100,
+                },
+                callback_msg: Binary::default(),
+            },
         )
         .unwrap();
 
@@ -96,7 +113,15 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             info,
-            ExecuteMsg::OnProofVerified {},
+            ExecuteMsg::InterchainEvent {
+                subscription_id: 2,
+                proven_value: "{\"status\":\"rejected\"}".to_string(),
+                height: cross_chain_shared::types::Height {
+                    revision_number: 1,
+                    revision_height: 200,
+                },
+                callback_msg: Binary::default(),
+            },
         )
         .unwrap();
 

@@ -12,9 +12,9 @@ export const NEUTRON_REVISION_NUMBER = 2;
 export const NEUTRON_LIGHT_CLIENT_ID = "07-tendermint-1119";
 
 export const INTERCHAIN_EVENTS_ADDRESS =
-  "cosmos1e96r45we8w204g5hnh3phlft9szxzkhjqqrf6lu82c5hdfxdz66q52cqg0";
+  "cosmos1ul3v2sh4uqgvzr2c00dz2un6373hkunk0e0z9ay9x9td3uj7qdtqqggyqc";
 export const PROOF_CALLBACK_ADDRESS =
-  "cosmos1ej8k44crydrg5qx3jd2g49va6k05mzfq7hfn0zpklqupvnu8nfwsm0ev57";
+  "cosmos108u0auz26aqgulr5exh4h2gadqar7qedcjj9yx7da5ramn0hlnmqj5plp2";
 export const ATTESTATION_REGISTRY_ADDRESS =
   "neutron1dhw2cyurukdvl9v36lkmd7p900u89cdalytv5a7tluzhkevd89wsda4wjl";
 
