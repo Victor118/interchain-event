@@ -5,6 +5,8 @@ members = [
     "contracts/proof-callback",
     "packages/shared",
 ]
+# Built standalone with its own Cargo.lock, see test-contracts/grpc-query-proxy/README.md
+exclude = ["test-contracts"]
 resolver = "2"
 
 [workspace.dependencies]

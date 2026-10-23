@@ -1,0 +1,23 @@
+[package]
+name = "grpc_query_proxy"
+version = "0.1.0"
+edition = "2021"
+description = "Test contract forwarding raw gRPC queries to the chain, used by the Gaia interchain test suite"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+
+[dependencies]
+cosmwasm-schema = "2.2"
+cosmwasm-std = { version = "2.2", features = ["cosmwasm_2_0"] }
