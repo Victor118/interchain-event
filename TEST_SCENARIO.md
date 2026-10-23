@@ -292,7 +292,7 @@ docker compose exec scripts npx tsx test-flow.ts --query-only
 
 1. **IAVL key construction**: Must exactly match cw-storage-plus encoding (namespace length prefix + namespace + key)
 2. **Proof format**: Converting from `tendermint.crypto.ProofOps` to `ibc.core.commitment.v1.MerkleProof`
-3. **AppHash source**: The Hub disables gRPC/Stargate queries for CosmWasm. The POC passes app_hash as parameter. Production would use `VerifyMembership` (see [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023))
+3. **AppHash source**: The Hub does not expose IBC light client queries to CosmWasm. The POC passes app_hash as parameter. Production would read it via `ConsensusState` or use `VerifyMembership` (see [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023))
 4. **Neutron revision_number**: Neutron uses revision_number `2` (not `1`)
 
 ## Quick Verification

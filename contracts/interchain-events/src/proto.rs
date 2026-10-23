@@ -112,7 +112,7 @@ pub struct MerkleProof {
 
 use crate::error::ContractError;
 
-/// Encode a QueryConsensusStateRequest for the Stargate/gRPC query.
+/// Encode a QueryConsensusStateRequest for the gRPC query (`deps.querier.query_grpc`).
 pub fn encode_consensus_state_request(
     client_id: &str,
     revision_number: u64,

@@ -38,17 +38,21 @@ Remote Chain (e.g., Neutron)          Cosmos Hub
 
 ## Key Technical Findings
 
-### 1. ConsensusState is queryable from CosmWasm
+### 1. Light client queries from CosmWasm
 
-Gaia's Stargate query whitelist (app/keepers/keepers.go:312-324) includes:
+CosmWasm contracts on the Hub can only reach gRPC queries listed in the wasmd gRPC accept list (`grpcAcceptList` in `app/keepers/keepers.go`). Stargate queries are rejected entirely. The accept list currently only contains `/cosmos.staking.v1beta1.Query/Validator` and `/cosmos.gov.v1.Query/Proposal`.
 
-- `/ibc.core.client.v1.Query/ClientState` ✅
-- `/ibc.core.client.v1.Query/ConsensusState` ✅
-- `/ibc.core.connection.v1.Query/Connection` ✅
+> The Stargate list in the same file that includes `ClientState`, `ConsensusState` and `Connection` belongs to the **08-wasm light client** querier. It does not apply to CosmWasm contracts.
 
-**VerifyMembership is NOT whitelisted** — it's not even exposed as a gRPC query on Gaia. It's an internal method of the ClientState interface used by the IBC module.
+ibc-go (v10 on the Hub) exposes three queries that matter here, none of them reachable from contracts yet:
 
-**Solution**: Query the ConsensusState to get the root hash (AppHash), then perform ICS-23 proof verification in pure Rust/Wasm inside the contract.
+- `/ibc.core.client.v1.Query/VerifyMembership`: the light client verifies a membership proof natively (annotated `module_query_safe`). There is no `VerifyNonMembership` gRPC query.
+- `/ibc.core.client.v1.Query/ConsensusState`: returns the trusted root (AppHash) at a given height. It does **not** check whether the client is frozen or expired.
+- `/ibc.core.client.v1.Query/ClientStatus`: returns `Active`, `Frozen`, `Expired`, ... The contract must require `Active` before trusting a root obtained via `ConsensusState` (`VerifyMembership` does this check internally).
+
+[cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023) proposes adding all three to the accept list.
+
+**Solution**: Query the ConsensusState to get the root hash (AppHash), then perform ICS-23 proof verification in pure Rust/Wasm inside the contract (this also covers non-membership). For membership proofs, `VerifyMembership` can replace the in-contract verification.
 
 ### 2. Proof structure is two-level
 
@@ -222,12 +226,14 @@ fn verify_proof(
     value: &[u8],
 ) -> Result<bool, ContractError> {
 
-    // Step 1: Query ConsensusState via Stargate (whitelisted)
-    let consensus_state_response = deps.querier.query::<Binary>(
-        &QueryRequest::Stargate {
-            path: "/ibc.core.client.v1.Query/ConsensusState".to_string(),
-            data: encode_consensus_state_request(client_id, height),
-        }
+    // Step 0: Require the client to be Active (ConsensusState doesn't check it)
+    // via "/ibc.core.client.v1.Query/ClientStatus" -> status == "Active"
+
+    // Step 1: Query ConsensusState via gRPC (requires the gaia#4023 accept list entry).
+    // query_grpc returns the raw protobuf response; query::<T>() would try to parse JSON.
+    let consensus_state_response = deps.querier.query_grpc(
+        "/ibc.core.client.v1.Query/ConsensusState".to_string(),
+        encode_consensus_state_request(client_id, height).into(),
     )?;
 
     // Step 2: Decode ConsensusState, extract root (AppHash)
@@ -402,7 +408,8 @@ pub enum Condition {
     Equals { expected: Binary },
     // Value exists (any value)
     Exists,
-    // Value does not exist (uses VerifyNonMembership)
+    // Value does not exist (ICS-23 non-existence proof verified in-contract
+    // against the ConsensusState root: there is no VerifyNonMembership gRPC query)
     NotExists,
 }
 ```
@@ -462,7 +469,7 @@ The submitter provides proofs at height H-1 and H. The contract verifies:
 
 ```toml
 [dependencies]
-cosmwasm-std = { version = "2.1", features = ["stargate"] }
+cosmwasm-std = { version = "2.1", features = ["stargate", "cosmwasm_2_0"] }  # cosmwasm_2_0 for query_grpc
 cosmwasm-schema = "2.1"
 cw-storage-plus = "2.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
@@ -520,7 +527,7 @@ These can be defined manually in the contract or imported from `cosmos-sdk-proto
 
 ### Success criteria
 
-- The contract successfully queries the ConsensusState via Stargate
+- The contract successfully queries the ConsensusState via gRPC (`query_grpc`)
 - The contract successfully verifies a two-level ICS-23 Merkle proof
 - The contract executes the stored action upon successful verification
 - Gas consumption is within acceptable limits (< 500k SDK gas)
@@ -533,7 +540,7 @@ These can be defined manually in the contract or imported from `cosmos-sdk-proto
 
 2. **Gas consumption**: Two-level proof verification with ~30 SHA256 hashes in Wasm. Estimated ~20-40k SDK gas for verification alone, but needs measurement.
 
-3. **Protobuf decoding in Wasm**: The ConsensusState response from Stargate query is protobuf-encoded. Need either `prost` or manual decoding. `prost` adds binary size to the contract.
+3. **Protobuf decoding in Wasm**: The ConsensusState response from the gRPC query is protobuf-encoded. Need either `prost` or manual decoding. `prost` adds binary size to the contract.
 
 4. **Proof format compatibility**: The `abci_query` ProofOps format must match what `ics23` crate expects as `CommitmentProof`. May need conversion between `tendermint.crypto.ProofOp` and `ics23.CommitmentProof`.
 

@@ -71,7 +71,7 @@ The POC demonstrates:
 - Verifying the proof on-chain and extracting a JSON field from the proven value
 - Triggering a callback on a separate contract
 
-**Current limitation:** The Hub disables Stargate/gRPC queries for CosmWasm, so the AppHash is provided off-chain instead of being read from the IBC light client. The Merkle proof verification itself is fully on-chain and trustless. Enabling `VerifyMembership` for CosmWasm (a 2-line config change in Gaia) would make the entire flow trustless.
+**Current limitation:** The Hub does not expose IBC light client queries to CosmWasm (Stargate queries are disabled and the gRPC accept list does not include them), so the AppHash is provided off-chain instead of being read from the IBC light client. The Merkle proof verification itself is fully on-chain and trustless. Enabling `VerifyMembership`, `ConsensusState` and `ClientStatus` for CosmWasm (a 3-line config change in Gaia) would make the entire flow trustless.
 
 ### Deployed contracts
 
@@ -165,13 +165,14 @@ The state explorer lets you browse any chain's state, click on a key to create a
 
 The POC uses an off-chain AppHash because the Hub doesn't expose IBC light client queries to CosmWasm. Two paths to full trustlessness:
 
-**Option A — Whitelist VerifyMembership (recommended)**
+**Option A — Whitelist VerifyMembership, ConsensusState and ClientStatus (recommended)**
 
-Add 2 lines to Gaia's wasmd configuration to allow CosmWasm contracts to call `VerifyMembership` on IBC light clients. This is a read-only query with zero security risk. Requires a Gaia software upgrade governance proposal. See [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023).
+Add 3 lines to Gaia's wasmd gRPC accept list so CosmWasm contracts can query IBC light clients. Both are read-only, deterministic and gas-metered. `VerifyMembership` verifies membership proofs natively; `ConsensusState` exposes the trusted AppHash, which covers non-membership proofs (there is no `VerifyNonMembership` gRPC query) and the current in-contract ICS-23 verification; `ClientStatus` lets the contract reject roots from a frozen or expired client, a check `VerifyMembership` already does internally. Requires a Gaia software upgrade governance proposal. See [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023).
 
 ```go
-"/ibc.core.client.v1.Query/VerifyMembership":    &ibcclienttypes.QueryVerifyMembershipResponse{},
-"/ibc.core.client.v1.Query/VerifyNonMembership": &ibcclienttypes.QueryVerifyMembershipResponse{},
+"/ibc.core.client.v1.Query/VerifyMembership": func() proto.Message { return &ibcclienttypes.QueryVerifyMembershipResponse{} },
+"/ibc.core.client.v1.Query/ConsensusState":   func() proto.Message { return &ibcclienttypes.QueryConsensusStateResponse{} },
+"/ibc.core.client.v1.Query/ClientStatus":     func() proto.Message { return &ibcclienttypes.QueryClientStatusResponse{} },
 ```
 
 **Option B — Embedded Tendermint light client**

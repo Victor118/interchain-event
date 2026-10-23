@@ -235,7 +235,7 @@ A watcher (or the interested party) submits a Merkle proof of a remote chain's s
 
 This is the core design principle: **observe any chain unilaterally, without deploying anything on it**.
 
-> **Note:** The Hub currently does not expose IBC light client queries to CosmWasm contracts. We have proposed enabling `VerifyMembership` and `VerifyNonMembership` as whitelisted gRPC queries — a 2-line configuration change with no security risk. See [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023).
+> **Note:** The Hub currently does not expose IBC light client queries to CosmWasm contracts. We have proposed enabling `VerifyMembership`, `ConsensusState` and `ClientStatus` as whitelisted gRPC queries — a 3-line configuration change with no security risk. See [cosmos/gaia#4023](https://github.com/cosmos/gaia/issues/4023).
 
 ### Multi-Hop Proof Routing (Transitive State Verification)
 
@@ -503,7 +503,7 @@ The submitter acts as its own relayer — no dependency on external relayers for
 ### Gas estimation
 
 - 2× MsgUpdateClient: ~200-300k gas (validator signature verification dominates)
-- 2× VerifyMembership via Stargate query: ~20-40k gas (IAVL Merkle proof verification, ~25 SHA256 hashes per proof)
+- 2× VerifyMembership via gRPC query: ~20-40k gas (IAVL Merkle proof verification, ~25 SHA256 hashes per proof)
 - Contract logic: ~20-30k gas
 - **Estimated total: ~350-500k gas** — within normal transaction limits, comparable to a standard ICS-20 transfer with memo
 
